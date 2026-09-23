@@ -129,6 +129,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     <button class="tab" data-panel="panel-maint">Log Maintenance</button>
     <button class="tab" data-panel="panel-dash">Dashboard</button>
     <button class="tab" data-panel="panel-reports">Reports</button>
+    <button class="tab" data-panel="panel-help">Help</button>
   </div>
 
   <!-- ==================== LOG FUEL (priority #1 screen) ==================== -->
@@ -260,12 +261,54 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     </div>
   </div>
 
+  <!-- ==================== HELP ==================== -->
+  <div id="panel-help" class="panel">
+    <div class="card">
+      <div class="card-title">Log Fuel</div>
+      <p style="font-size:14px;line-height:1.6;color:var(--text2);">
+        Tap the photo box to snap the receipt (photo just attaches to the entry for now — you still type in the numbers below it).
+        Pick the truck, enter gallons and price per gallon and the total fills in on its own — you can overwrite it if the pump's total doesn't match.
+        Odometer and location help the Dashboard track mileage-based maintenance, so fill those in when you can. Tap <strong>Save Fuel Entry</strong> when done.
+      </p>
+    </div>
+    <div class="card">
+      <div class="card-title">Log Maintenance</div>
+      <p style="font-size:14px;line-height:1.6;color:var(--text2);">
+        Same pattern as fuel — pick the truck, pick a <strong>Service Type</strong> from the dropdown (Oil Change, Tire Rotation, DOT Inspection, Brake Inspection, Chassis Lube, or Other).
+        Picking one of the first five matches it against that truck's maintenance schedule, so the Dashboard's due-countdown resets automatically. "Other" logs fine but won't get a due-reminder.
+      </p>
+    </div>
+    <div class="card">
+      <div class="card-title">Dashboard</div>
+      <p style="font-size:14px;line-height:1.6;color:var(--text2);">
+        One card per truck, showing current odometer, last fuel-up, and every tracked service with a colored dot:
+        <span class="dot green" style="display:inline-block;vertical-align:middle;"></span> green = not due soon,
+        <span class="dot amber" style="display:inline-block;vertical-align:middle;"></span> amber = due within 14 days or the last 10% of the mileage interval,
+        <span class="dot red" style="display:inline-block;vertical-align:middle;"></span> red = overdue.
+        These are computed automatically from your Log Maintenance entries — nothing to update by hand.
+      </p>
+    </div>
+    <div class="card">
+      <div class="card-title">Reports</div>
+      <p style="font-size:14px;line-height:1.6;color:var(--text2);">
+        Fuel + maintenance cost totals per truck, added up from every entry you've logged. Excel export is planned but not built yet.
+      </p>
+    </div>
+    <div class="card">
+      <div class="card-title">Adjusting maintenance intervals</div>
+      <p style="font-size:14px;line-height:1.6;color:var(--text2);">
+        The 5 default intervals (Oil Change, Tire Rotation, DOT Inspection, Brake Inspection, Chassis Lube) live in the <strong>MaintenanceRules</strong> tab of the shared Google Sheet.
+        To change one truck's interval without affecting the rest of the fleet, add a new row with that truck's number filled in — it overrides the blank/default row for that truck only.
+      </p>
+    </div>
+  </div>
+
 </div>
 
 <script src="ea_logo_b64.js"></script>
 <script>
 // TODO on deploy: replace with the deployed Apps Script /exec URL (Deployment step 6 in DEPLOYMENT.md)
-const API_URL = 'PASTE_APPS_SCRIPT_WEB_APP_URL_HERE';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxIgip3DXn4GLJSPVDGkDPdr1yUHA_Kq0JdLQ1Ku0PfQXkf2NUAYFcBl8RWECvSWtv-/exec';
 
 let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceRules: [], dashboard: [] };
 
