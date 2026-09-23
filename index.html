@@ -144,6 +144,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     <button class="tab" data-panel="panel-maint">Log Maintenance</button>
     <button class="tab" data-panel="panel-dash">Dashboard</button>
     <button class="tab" data-panel="panel-reports">Reports</button>
+    <button class="tab" data-panel="panel-ifta">IFTA</button>
     <button class="tab" data-panel="panel-help">Help</button>
   </div>
 
@@ -188,9 +189,15 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
           <input type="number" id="fuel-odometer" class="field-input" placeholder="miles">
         </div>
       </div>
-      <div class="field-group">
-        <label class="field-label">Location</label>
-        <input type="text" id="fuel-location" class="field-input" placeholder="Loves #412 — McKinney, TX">
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Location</label>
+          <input type="text" id="fuel-location" class="field-input" placeholder="Loves #412 — McKinney, TX">
+        </div>
+        <div class="field-group">
+          <label class="field-label">State</label>
+          <select id="fuel-state" class="field-input"></select>
+        </div>
       </div>
       <div class="field-row">
         <div class="field-group">
@@ -288,6 +295,76 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     </div>
   </div>
 
+  <!-- ==================== IFTA ==================== -->
+  <div id="panel-ifta" class="panel">
+    <div class="card">
+      <div class="card-title">IFTA Report</div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Truck</label>
+          <select id="ifta-report-truck" class="field-input"></select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Quarter</label>
+          <select id="ifta-report-quarter" class="field-input"></select>
+        </div>
+      </div>
+      <button class="btn btn-green" id="ifta-run-btn">Calculate</button>
+      <div id="ifta-report-result" style="margin-top:16px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Log Miles by State</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px;">No GPS feed to pull this from — enter your best estimate per state per quarter from known routes. Re-entering the same truck + quarter + state updates it instead of duplicating.</p>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Truck</label>
+          <select id="ifta-miles-truck" class="field-input"></select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Quarter</label>
+          <select id="ifta-miles-quarter" class="field-input"></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">State</label>
+          <select id="ifta-miles-state" class="field-input"></select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Miles</label>
+          <input type="number" id="ifta-miles-value" class="field-input" placeholder="0">
+        </div>
+      </div>
+      <button class="btn btn-sm" id="ifta-miles-save-btn">Save Mileage</button>
+      <div id="ifta-mileage-list" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Quarterly Tax Rates</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px;">
+        IFTA publishes new per-state rates every quarter — check the official rate matrix at
+        <a href="https://www.iftach.org/taxmatrix4/" target="_blank" style="color:var(--accent);">iftach.org/taxmatrix4</a> and enter them here each quarter.
+      </p>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Quarter</label>
+          <select id="ifta-rate-quarter" class="field-input"></select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">State</label>
+          <select id="ifta-rate-state" class="field-input"></select>
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Rate per gallon ($)</label>
+        <input type="number" step="0.0001" id="ifta-rate-value" class="field-input" placeholder="0.0000">
+      </div>
+      <button class="btn btn-sm" id="ifta-rate-save-btn">Save Rate</button>
+      <div id="ifta-rates-list" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
   <!-- ==================== HELP ==================== -->
   <div id="panel-help" class="panel">
     <div class="card">
@@ -356,11 +433,41 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 // TODO on deploy: replace with the deployed Apps Script /exec URL (Deployment step 6 in DEPLOYMENT.md)
 const API_URL = 'https://script.google.com/macros/s/AKfycbxIgip3DXn4GLJSPVDGkDPdr1yUHA_Kq0JdLQ1Ku0PfQXkf2NUAYFcBl8RWECvSWtv-/exec';
 
-let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceRules: [], alertContacts: [], dashboard: [] };
+let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceRules: [], alertContacts: [], iftaMileage: [], iftaRates: [], dashboard: [] };
+
+const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
 
 document.getElementById('ea-logo').src = 'data:image/png;base64,' + EA_LOGO_B64;
 document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('maint-date').value = new Date().toISOString().slice(0,10);
+
+// State dropdowns default to TX (home base) but any state can be picked.
+['fuel-state', 'ifta-miles-state', 'ifta-rate-state'].forEach(id => {
+  const el = document.getElementById(id);
+  el.innerHTML = US_STATES.map(s => `<option value="${s}" ${s === 'TX' ? 'selected' : ''}>${s}</option>`).join('');
+});
+
+// Quarter dropdowns: current quarter plus the previous 3 and next 1, newest first.
+function currentQuarterStr() {
+  const d = new Date();
+  return d.getFullYear() + '-Q' + (Math.floor(d.getMonth() / 3) + 1);
+}
+function quarterOptionsHtml() {
+  const now = new Date();
+  const nowYear = now.getFullYear(), nowQ = Math.floor(now.getMonth() / 3) + 1;
+  const opts = [];
+  for (let offset = 1; offset >= -3; offset--) {
+    let qi = nowQ + offset, yr = nowYear;
+    while (qi < 1) { qi += 4; yr -= 1; }
+    while (qi > 4) { qi -= 4; yr += 1; }
+    const val = `${yr}-Q${qi}`;
+    opts.push(`<option value="${val}" ${val === currentQuarterStr() ? 'selected' : ''}>${val}</option>`);
+  }
+  return opts.join('');
+}
+['ifta-report-quarter', 'ifta-miles-quarter', 'ifta-rate-quarter'].forEach(id => {
+  document.getElementById(id).innerHTML = quarterOptionsHtml();
+});
 
 // ---- Tabs ----
 document.querySelectorAll('.tab').forEach(tab => {
@@ -387,6 +494,8 @@ async function loadData() {
     renderDashboard();
     renderReports();
     renderContacts();
+    renderIftaMileageList();
+    renderIftaRatesList();
   } catch (err) {
     console.error('Load failed', err);
   } finally {
@@ -401,6 +510,8 @@ function populateTruckSelects() {
     .join('');
   document.getElementById('fuel-truck').innerHTML = opts;
   document.getElementById('maint-truck').innerHTML = opts;
+  document.getElementById('ifta-report-truck').innerHTML = opts;
+  document.getElementById('ifta-miles-truck').innerHTML = opts;
 }
 
 // ---- Fuel: auto-calc total from gallons x price, but never overwrite a manual edit ----
@@ -459,6 +570,7 @@ document.getElementById('fuel-save-btn').addEventListener('click', async () => {
     total_cost: document.getElementById('fuel-total').value,
     odometer: document.getElementById('fuel-odometer').value,
     location: document.getElementById('fuel-location').value,
+    state: document.getElementById('fuel-state').value,
     driver: document.getElementById('fuel-driver').value,
     card_last4: document.getElementById('fuel-card').value
   };
@@ -674,6 +786,126 @@ document.getElementById('contact-add-btn').addEventListener('click', async () =>
   } else {
     alert('Save failed: ' + (result.error || 'unknown error'));
   }
+});
+
+// ---- IFTA: mileage log ----
+function renderIftaMileageList() {
+  const list = document.getElementById('ifta-mileage-list');
+  const rows = STATE.iftaMileage || [];
+  if (!rows.length) { list.innerHTML = '<div style="font-size:13px;color:var(--text3);">No mileage logged yet.</div>'; return; }
+  const sorted = [...rows].sort((a, b) => b.quarter.localeCompare(a.quarter) || a.truck_number.localeCompare(b.truck_number) || a.state.localeCompare(b.state));
+  list.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Truck</th><th>Quarter</th><th>State</th><th>Miles</th><th></th></tr></thead><tbody>${
+    sorted.map(r => `<tr>
+      <td>${escapeHtml(r.truck_number)}</td><td>${escapeHtml(r.quarter)}</td><td>${escapeHtml(r.state)}</td>
+      <td>${r.miles.toLocaleString()}</td>
+      <td><button class="btn btn-sm btn-red" data-ifta-mileage-id="${r.id}">✕</button></td>
+    </tr>`).join('')
+  }</tbody></table></div>`;
+  list.querySelectorAll('[data-ifta-mileage-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await postAction('deleteIftaMileage', { id: btn.dataset.iftaMileageId });
+      loadData();
+    });
+  });
+}
+
+document.getElementById('ifta-miles-save-btn').addEventListener('click', async () => {
+  const payload = {
+    truck_number: document.getElementById('ifta-miles-truck').value,
+    quarter: document.getElementById('ifta-miles-quarter').value,
+    state: document.getElementById('ifta-miles-state').value,
+    miles: document.getElementById('ifta-miles-value').value
+  };
+  if (!payload.truck_number) { alert('Pick a truck first.'); return; }
+  const result = await postAction('saveIftaMileage', payload);
+  if (result.success) {
+    document.getElementById('ifta-miles-value').value = '';
+    loadData();
+  } else {
+    alert('Save failed: ' + (result.error || 'unknown error'));
+  }
+});
+
+// ---- IFTA: quarterly rates ----
+function renderIftaRatesList() {
+  const list = document.getElementById('ifta-rates-list');
+  const rows = STATE.iftaRates || [];
+  if (!rows.length) { list.innerHTML = '<div style="font-size:13px;color:var(--text3);">No rates entered yet.</div>'; return; }
+  const sorted = [...rows].sort((a, b) => b.quarter.localeCompare(a.quarter) || a.state.localeCompare(b.state));
+  list.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Quarter</th><th>State</th><th>Rate/gal</th><th></th></tr></thead><tbody>${
+    sorted.map(r => `<tr>
+      <td>${escapeHtml(r.quarter)}</td><td>${escapeHtml(r.state)}</td><td>$${r.rate_per_gallon.toFixed(4)}</td>
+      <td><button class="btn btn-sm btn-red" data-ifta-rate-id="${r.id}">✕</button></td>
+    </tr>`).join('')
+  }</tbody></table></div>`;
+  list.querySelectorAll('[data-ifta-rate-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await postAction('deleteIftaRate', { id: btn.dataset.iftaRateId });
+      loadData();
+    });
+  });
+}
+
+document.getElementById('ifta-rate-save-btn').addEventListener('click', async () => {
+  const payload = {
+    quarter: document.getElementById('ifta-rate-quarter').value,
+    state: document.getElementById('ifta-rate-state').value,
+    rate_per_gallon: document.getElementById('ifta-rate-value').value
+  };
+  if (!payload.rate_per_gallon) { alert('Enter a rate first.'); return; }
+  const result = await postAction('saveIftaRate', payload);
+  if (result.success) {
+    document.getElementById('ifta-rate-value').value = '';
+    loadData();
+  } else {
+    alert('Save failed: ' + (result.error || 'unknown error'));
+  }
+});
+
+// ---- IFTA: report ----
+document.getElementById('ifta-run-btn').addEventListener('click', async () => {
+  const truck_number = document.getElementById('ifta-report-truck').value;
+  const quarter = document.getElementById('ifta-report-quarter').value;
+  const resultEl = document.getElementById('ifta-report-result');
+  if (!truck_number) { alert('Pick a truck first.'); return; }
+  resultEl.innerHTML = '<div style="font-size:13px;color:var(--text3);">Calculating…</div>';
+  const report = await postAction('getIftaReport', { truck_number, quarter });
+
+  if (!report.rows || !report.rows.length) {
+    resultEl.innerHTML = '<div class="card" style="margin:0;">No mileage or fuel data for this truck/quarter yet — log mileage by state and fuel purchases first.</div>';
+    return;
+  }
+
+  const netClass = v => v > 0 ? 'red' : (v < 0 ? 'green' : '');
+  resultEl.innerHTML = `
+    <div class="metrics" style="margin-bottom:14px;">
+      <div class="metric"><div class="metric-label">Total Miles</div><div class="metric-value">${report.total_miles.toLocaleString()}</div></div>
+      <div class="metric"><div class="metric-label">Total Gallons</div><div class="metric-value">${report.total_gallons.toFixed(1)}</div></div>
+      <div class="metric"><div class="metric-label">Fleet MPG</div><div class="metric-value">${report.fleet_mpg.toFixed(2)}</div></div>
+    </div>
+    ${report.missing_rates.length ? `<div style="font-size:13px;color:var(--amber);margin-bottom:12px;">⚠️ No rate entered for: ${report.missing_rates.join(', ')} — that state's tax due will show as $0 until you add its rate above.</div>` : ''}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>State</th><th>Miles</th><th>Gal Purchased</th><th>Rate</th><th>Taxable Gal</th><th>Tax Due</th><th>Tax Paid</th><th>Net</th></tr></thead>
+        <tbody>
+          ${report.rows.map(r => `<tr>
+            <td>${escapeHtml(r.state)}</td>
+            <td>${r.miles.toLocaleString()}</td>
+            <td>${r.gallons_purchased.toFixed(1)}</td>
+            <td>$${r.rate_per_gallon.toFixed(4)}</td>
+            <td>${r.taxable_gallons.toFixed(1)}</td>
+            <td>$${r.tax_due.toFixed(2)}</td>
+            <td>$${r.tax_paid.toFixed(2)}</td>
+            <td class="${netClass(r.net)}" style="font-weight:600;">${r.net > 0 ? '+' : ''}$${r.net.toFixed(2)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px;font-size:14px;">
+      <strong>Grand total: <span class="${netClass(report.grand_total_net)}">${report.grand_total_net > 0 ? 'You owe ' : 'Credit of '}$${Math.abs(report.grand_total_net).toFixed(2)}</span></strong>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px;">Positive = owed across all states combined. Negative = net credit. Check each state individually — some may owe while others credit.</div>
+    </div>
+  `;
 });
 
 loadData();
