@@ -108,6 +108,13 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 .dot.red{background:var(--red);}.dot.amber{background:var(--amber);}.dot.green{background:var(--green);}
 .truck-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .truck-num{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;}
+#alert-banner{display:none;background:var(--amber-dim);border-bottom:2px solid var(--amber);padding:10px 20px;position:sticky;top:58px;z-index:99;}
+#alert-banner.show{display:block;}
+#alert-banner.urgent{background:var(--red-dim);border-bottom-color:var(--red);animation:pulse-banner 1.6s infinite;}
+@keyframes pulse-banner{0%,100%{box-shadow:0 0 0 0 rgba(240,82,79,0.35);}50%{box-shadow:0 0 16px 3px rgba(240,82,79,0.4);}}
+#alert-banner-list{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:5px;}
+.alert-banner-item{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--amber);}
+.alert-banner-item.urgent{color:var(--red);}
 </style>
 </head>
 <body>
@@ -120,6 +127,10 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
   <div class="nav-right">
     <div class="sync-pill"><span id="sync-dot" class="sync-dot"></span><span id="sync-label">Synced</span></div>
   </div>
+</div>
+
+<div id="alert-banner">
+  <div id="alert-banner-list"></div>
 </div>
 
 <div class="container">
@@ -177,9 +188,15 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
         <label class="field-label">Location</label>
         <input type="text" id="fuel-location" class="field-input" placeholder="Loves #412 — McKinney, TX">
       </div>
-      <div class="field-group">
-        <label class="field-label">Driver (optional)</label>
-        <input type="text" id="fuel-driver" class="field-input">
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Driver (optional)</label>
+          <input type="text" id="fuel-driver" class="field-input">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Card # (last 4 only)</label>
+          <input type="text" id="fuel-card" class="field-input" maxlength="4" inputmode="numeric" placeholder="1234">
+        </div>
       </div>
 
       <button class="btn btn-green btn-full" id="fuel-save-btn">Save Fuel Entry</button>
@@ -232,9 +249,15 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
           <input type="number" id="maint-odometer" class="field-input">
         </div>
       </div>
-      <div class="field-group">
-        <label class="field-label">Shop / Vendor</label>
-        <input type="text" id="maint-vendor" class="field-input">
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Shop / Vendor</label>
+          <input type="text" id="maint-vendor" class="field-input">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Receipt #</label>
+          <input type="text" id="maint-receipt-number" class="field-input">
+        </div>
       </div>
 
       <button class="btn btn-green btn-full" id="maint-save-btn">Save Maintenance Entry</button>
@@ -412,7 +435,8 @@ document.getElementById('fuel-save-btn').addEventListener('click', async () => {
     total_cost: document.getElementById('fuel-total').value,
     odometer: document.getElementById('fuel-odometer').value,
     location: document.getElementById('fuel-location').value,
-    driver: document.getElementById('fuel-driver').value
+    driver: document.getElementById('fuel-driver').value,
+    card_last4: document.getElementById('fuel-card').value
   };
   if (window._fuelPhotoDataUrl) {
     const upload = await postAction('uploadPhoto', { base64: window._fuelPhotoDataUrl, filename: `fuel-${payload.truck_number}-${payload.date}.jpg` });
@@ -431,7 +455,8 @@ document.getElementById('maint-save-btn').addEventListener('click', async () => 
     description: document.getElementById('maint-description').value,
     cost: document.getElementById('maint-cost').value,
     odometer: document.getElementById('maint-odometer').value,
-    shop_vendor: document.getElementById('maint-vendor').value
+    shop_vendor: document.getElementById('maint-vendor').value,
+    receipt_number: document.getElementById('maint-receipt-number').value
   };
   if (window._maintPhotoDataUrl) {
     const upload = await postAction('uploadPhoto', { base64: window._maintPhotoDataUrl, filename: `maint-${payload.truck_number}-${payload.date}.jpg` });
@@ -443,7 +468,7 @@ document.getElementById('maint-save-btn').addEventListener('click', async () => 
 });
 
 function resetFuelForm() {
-  ['fuel-gallons','fuel-price','fuel-total','fuel-odometer','fuel-location','fuel-driver'].forEach(id => document.getElementById(id).value = '');
+  ['fuel-gallons','fuel-price','fuel-total','fuel-odometer','fuel-location','fuel-driver','fuel-card'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('fuel-photo-preview').style.display = 'none';
   document.getElementById('fuel-photo-capture').style.display = 'block';
@@ -451,7 +476,7 @@ function resetFuelForm() {
   totalManuallyEdited = false;
 }
 function resetMaintForm() {
-  ['maint-description','maint-cost','maint-odometer','maint-vendor'].forEach(id => document.getElementById(id).value = '');
+  ['maint-description','maint-cost','maint-odometer','maint-vendor','maint-receipt-number'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('maint-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('maint-photo-preview').style.display = 'none';
   document.getElementById('maint-photo-capture').style.display = 'block';
@@ -487,6 +512,37 @@ function renderDashboard() {
       `).join('')}
     </div>
   `).join('') || '<div class="card">No trucks found — check the Trucks tab in the shared Sheet.</div>';
+
+  renderAlertBanner(dash);
+}
+
+// ---- Alert banner — pulsing bar across the top when anything is due soon or overdue ----
+function renderAlertBanner(dash) {
+  const items = [];
+  dash.forEach(t => {
+    t.upcoming_maintenance.forEach(m => {
+      if (m.status !== 'red' && m.status !== 'amber') return;
+      let when = '';
+      if (m.days_remaining != null) {
+        when = m.days_remaining <= 0 ? `${Math.abs(m.days_remaining)}d overdue` : `due in ${m.days_remaining}d`;
+      } else if (m.miles_remaining != null) {
+        when = m.miles_remaining <= 0 ? `${Math.abs(Math.round(m.miles_remaining))} mi overdue` : `due in ${Math.round(m.miles_remaining)} mi`;
+      }
+      items.push({ urgent: m.status === 'red', text: `${t.truck_number}: ${m.service_type} — ${when}` });
+    });
+  });
+  items.sort((a, b) => (a.urgent === b.urgent) ? 0 : (a.urgent ? -1 : 1));
+
+  const banner = document.getElementById('alert-banner');
+  if (!items.length) {
+    banner.classList.remove('show', 'urgent');
+    return;
+  }
+  banner.classList.add('show');
+  banner.classList.toggle('urgent', items.some(i => i.urgent));
+  document.getElementById('alert-banner-list').innerHTML = items.map(i =>
+    `<div class="alert-banner-item ${i.urgent ? 'urgent' : ''}">${i.urgent ? '🔴' : '🟡'} ${i.text}</div>`
+  ).join('');
 }
 
 // ---- Reports ----
