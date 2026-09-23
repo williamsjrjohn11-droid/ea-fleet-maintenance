@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>EA Fleet Maintenance</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1117">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #22263a;
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.14);
+  --text: #f0f2f8;
+  --text2: #8b90a8;
+  --text3: #767ca0;
+  --green: #22c97a;
+  --green-dim: rgba(34,201,122,0.12);
+  --red: #f0524f;
+  --red-dim: rgba(240,82,79,0.12);
+  --amber: #f5a623;
+  --amber-dim: rgba(245,166,35,0.12);
+  --blue: #4e8ef7;
+  --blue-dim: rgba(78,142,247,0.12);
+  --accent: #f5a623;
+  --radius: 10px;
+  --radius-lg: 14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+.nav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:58px;position:sticky;top:0;z-index:100;}
+.nav-brand{display:flex;align-items:center;gap:10px;}
+.nav-logo{width:40px;height:40px;object-fit:contain;display:flex;align-items:center;justify-content:center;}
+.nav-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:.04em;}
+.nav-title span{color:var(--accent);}
+.nav-right{display:flex;align-items:center;gap:8px;}
+.sync-pill{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);background:var(--surface2);padding:5px 10px;border-radius:20px;border:1px solid var(--border);}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--green);}
+.sync-dot.busy{background:var(--amber);animation:blink 1s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.container{max-width:1100px;margin:0 auto;padding:24px 20px;}
+.tabs{display:flex;gap:2px;background:var(--surface);border-radius:var(--radius);padding:4px;margin-bottom:20px;border:1px solid var(--border);flex-wrap:wrap;}
+.tab{flex:1;padding:8px;text-align:center;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-radius:7px;border:none;background:none;transition:all .15s;white-space:nowrap;}
+.tab.active{background:var(--surface2);color:var(--text);border:1px solid var(--border2);}
+.panel{display:none;}.panel.active{display:block;}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px;}
+.metric-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
+.metric-value{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:700;color:var(--text);}
+.metric-value.green{color:var(--green);}.metric-value.red{color:var(--red);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:14px;}
+.card-title{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;}
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;padding:9px 10px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,0.02);}
+.mono{font-family:'Courier New',monospace;font-size:12px;}
+.badge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;white-space:nowrap;}
+.badge-green{background:var(--green-dim);color:var(--green);}
+.badge-red{background:var(--red-dim);color:var(--red);}
+.badge-amber{background:var(--amber-dim);color:var(--amber);}
+.badge-gray{background:var(--surface2);color:var(--text2);}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-family:'Barlow',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;}
+.btn:hover{background:var(--surface);}
+.btn-green{background:var(--green);color:#000;border-color:transparent;font-weight:600;}
+.btn-green:hover{background:#1aad68;}
+.btn-green:disabled{opacity:.5;cursor:not-allowed;}
+.btn-red{color:var(--red);border-color:rgba(240,82,79,0.3);}
+.btn-red:hover{background:var(--red-dim);}
+.btn-sm{padding:5px 10px;font-size:12px;}
+.btn-full{width:100%;justify-content:center;padding:12px;font-size:14px;}
+.chip{font-size:12px;font-weight:500;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);cursor:pointer;background:none;color:var(--text2);transition:all .15s;font-family:'Barlow',sans-serif;}
+.chip:hover{background:var(--surface2);color:var(--text);}
+.chip.active{background:var(--accent);color:#000;border-color:transparent;}
+select{font-size:12px;padding:6px 10px;border-radius:var(--radius);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:'Barlow',sans-serif;}
+input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);cursor:pointer;opacity:0.8;}
+input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1;}
+textarea,input[type=text],input[type=password]{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-family:'Courier New',monospace;font-size:12px;padding:12px;resize:vertical;}
+textarea:focus,input:focus{outline:none;border-color:var(--accent);}
+.empty{text-align:center;padding:40px 20px;color:var(--text3);font-size:14px;}
+.empty-icon{font-size:36px;display:block;margin-bottom:10px;}
+@media(max-width:600px){
+  .nav-title{font-size:15px;}
+  .metrics{grid-template-columns:1fr 1fr;}
+  .metric-value{font-size:22px;}
+  .container{padding:16px 12px;}
+}
+</style>
+<style>
+/* ---- Fleet-Maintenance-specific additions (layered on top of branding.css) ---- */
+.field-group{margin-bottom:14px;}
+.field-label{display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+.field-input{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;padding:10px 12px;}
+.field-input:focus{outline:none;border-color:var(--accent);}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.photo-capture{border:1.5px dashed var(--border2);border-radius:var(--radius-lg);padding:24px;text-align:center;cursor:pointer;color:var(--text2);margin-bottom:16px;}
+.photo-capture:hover{border-color:var(--accent);color:var(--text);}
+.photo-preview{width:100%;max-height:260px;object-fit:contain;border-radius:var(--radius);margin-bottom:16px;}
+.due-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);}
+.due-row:last-child{border-bottom:none;}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.dot.red{background:var(--red);}.dot.amber{background:var(--amber);}.dot.green{background:var(--green);}
+.truck-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.truck-num{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-brand">
+    <img id="ea-logo" class="nav-logo" style="background:none;" alt="EA">
+    <div class="nav-title">FLEET <span>MAINTENANCE</span></div>
+  </div>
+  <div class="nav-right">
+    <div class="sync-pill"><span id="sync-dot" class="sync-dot"></span><span id="sync-label">Synced</span></div>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="tabs">
+    <button class="tab active" data-panel="panel-fuel">Log Fuel</button>
+    <button class="tab" data-panel="panel-maint">Log Maintenance</button>
+    <button class="tab" data-panel="panel-dash">Dashboard</button>
+    <button class="tab" data-panel="panel-reports">Reports</button>
+  </div>
+
+  <!-- ==================== LOG FUEL (priority #1 screen) ==================== -->
+  <div id="panel-fuel" class="panel active">
+    <div class="card">
+      <div class="card-title">New Fuel Entry</div>
+
+      <div id="fuel-photo-capture" class="photo-capture">
+        📷 Tap to photograph the receipt<br><span style="font-size:12px;">AI will read gallons, price/gal, and total — confirm before saving</span>
+      </div>
+      <img id="fuel-photo-preview" class="photo-preview" style="display:none;">
+      <input type="file" id="fuel-photo-input" accept="image/*" capture="environment" style="display:none;">
+
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Truck</label>
+          <select id="fuel-truck" class="field-input"></select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Date</label>
+          <input type="date" id="fuel-date" class="field-input">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Gallons</label>
+          <input type="number" step="0.001" id="fuel-gallons" class="field-input" placeholder="0.000">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Price / Gal</label>
+          <input type="number" step="0.001" id="fuel-price" class="field-input" placeholder="0.000">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Total Cost</label>
+          <input type="number" step="0.01" id="fuel-total" class="field-input" placeholder="auto-calculated, editable">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Odometer</label>
+          <input type="number" id="fuel-odometer" class="field-input" placeholder="miles">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Location</label>
+        <input type="text" id="fuel-location" class="field-input" placeholder="Loves #412 — McKinney, TX">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Driver (optional)</label>
+        <input type="text" id="fuel-driver" class="field-input">
+      </div>
+
+      <button class="btn btn-green btn-full" id="fuel-save-btn">Save Fuel Entry</button>
+    </div>
+  </div>
+
+  <!-- ==================== LOG MAINTENANCE ==================== -->
+  <div id="panel-maint" class="panel">
+    <div class="card">
+      <div class="card-title">New Maintenance Entry</div>
+
+      <div id="maint-photo-capture" class="photo-capture">
+        📷 Tap to photograph the invoice<br><span style="font-size:12px;">AI will read service type, cost, and vendor — confirm before saving</span>
+      </div>
+      <img id="maint-photo-preview" class="photo-preview" style="display:none;">
+      <input type="file" id="maint-photo-input" accept="image/*" capture="environment" style="display:none;">
+
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Truck</label>
+          <select id="maint-truck" class="field-input"></select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Date</label>
+          <input type="date" id="maint-date" class="field-input">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Service Type</label>
+        <select id="maint-service-type" class="field-input">
+          <option>Oil Change</option>
+          <option>Tire Rotation</option>
+          <option>DOT Inspection</option>
+          <option>Brake Inspection</option>
+          <option>Chassis Lube</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Description</label>
+        <input type="text" id="maint-description" class="field-input" placeholder="Front brake pads + rotors">
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Cost</label>
+          <input type="number" step="0.01" id="maint-cost" class="field-input">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Odometer</label>
+          <input type="number" id="maint-odometer" class="field-input">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Shop / Vendor</label>
+        <input type="text" id="maint-vendor" class="field-input">
+      </div>
+
+      <button class="btn btn-green btn-full" id="maint-save-btn">Save Maintenance Entry</button>
+    </div>
+  </div>
+
+  <!-- ==================== DASHBOARD ==================== -->
+  <div id="panel-dash" class="panel">
+    <div class="metrics" id="dash-metrics"></div>
+    <div id="dash-trucks"></div>
+  </div>
+
+  <!-- ==================== REPORTS ==================== -->
+  <div id="panel-reports" class="panel">
+    <div class="card">
+      <div class="card-title">Cost Per Truck</div>
+      <div class="table-wrap">
+        <table id="reports-table">
+          <thead><tr><th>Truck</th><th>Fuel Cost</th><th>Maintenance Cost</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button class="btn btn-sm" id="reports-export-btn" style="margin-top:14px;">Export to Excel</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="ea_logo_b64.js"></script>
+<script>
+// TODO on deploy: replace with the deployed Apps Script /exec URL (Deployment step 6 in DEPLOYMENT.md)
+const API_URL = 'PASTE_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceRules: [], dashboard: [] };
+
+document.getElementById('ea-logo').src = 'data:image/png;base64,' + EA_LOGO_B64;
+document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
+document.getElementById('maint-date').value = new Date().toISOString().slice(0,10);
+
+// ---- Tabs ----
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.panel).classList.add('active');
+  });
+});
+
+// ---- Load data ----
+function setSyncing(isSyncing) {
+  document.getElementById('sync-dot').classList.toggle('busy', isSyncing);
+  document.getElementById('sync-label').textContent = isSyncing ? 'Syncing…' : 'Synced';
+}
+
+async function loadData() {
+  setSyncing(true);
+  try {
+    const res = await fetch(API_URL);
+    STATE = await res.json();
+    populateTruckSelects();
+    renderDashboard();
+    renderReports();
+  } catch (err) {
+    console.error('Load failed', err);
+  } finally {
+    setSyncing(false);
+  }
+}
+
+function populateTruckSelects() {
+  const opts = STATE.trucks
+    .filter(t => t.status === 'Active')
+    .map(t => `<option value="${t.truck_number}">${t.truck_number}${t.assigned_driver ? ' — ' + t.assigned_driver : ''}</option>`)
+    .join('');
+  document.getElementById('fuel-truck').innerHTML = opts;
+  document.getElementById('maint-truck').innerHTML = opts;
+}
+
+// ---- Fuel: auto-calc total from gallons x price, but never overwrite a manual edit ----
+let totalManuallyEdited = false;
+document.getElementById('fuel-total').addEventListener('input', () => totalManuallyEdited = true);
+function recalcFuelTotal() {
+  if (totalManuallyEdited) return;
+  const g = parseFloat(document.getElementById('fuel-gallons').value) || 0;
+  const p = parseFloat(document.getElementById('fuel-price').value) || 0;
+  document.getElementById('fuel-total').value = g && p ? (g * p).toFixed(2) : '';
+}
+document.getElementById('fuel-gallons').addEventListener('input', recalcFuelTotal);
+document.getElementById('fuel-price').addEventListener('input', recalcFuelTotal);
+
+// ---- Photo capture (wiring only — AI extraction is next build step, see handoff) ----
+function wirePhotoCapture(captureId, inputId, previewId, onPhoto) {
+  document.getElementById(captureId).addEventListener('click', () => document.getElementById(inputId).click());
+  document.getElementById(inputId).addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const preview = document.getElementById(previewId);
+      preview.src = reader.result;
+      preview.style.display = 'block';
+      document.getElementById(captureId).style.display = 'none';
+      onPhoto(reader.result); // TODO: send to AI vision extraction, auto-fill fields, user confirms
+    };
+    reader.readAsDataURL(file);
+  });
+}
+wirePhotoCapture('fuel-photo-capture', 'fuel-photo-input', 'fuel-photo-preview', (dataUrl) => {
+  window._fuelPhotoDataUrl = dataUrl;
+});
+wirePhotoCapture('maint-photo-capture', 'maint-photo-input', 'maint-photo-preview', (dataUrl) => {
+  window._maintPhotoDataUrl = dataUrl;
+});
+
+// ---- Save handlers ----
+async function postAction(action, payload) {
+  setSyncing(true);
+  try {
+    const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action, payload }) });
+    return await res.json();
+  } finally {
+    setSyncing(false);
+  }
+}
+
+document.getElementById('fuel-save-btn').addEventListener('click', async () => {
+  const payload = {
+    truck_number: document.getElementById('fuel-truck').value,
+    date: document.getElementById('fuel-date').value,
+    gallons: document.getElementById('fuel-gallons').value,
+    price_per_gal: document.getElementById('fuel-price').value,
+    total_cost: document.getElementById('fuel-total').value,
+    odometer: document.getElementById('fuel-odometer').value,
+    location: document.getElementById('fuel-location').value,
+    driver: document.getElementById('fuel-driver').value
+  };
+  if (window._fuelPhotoDataUrl) {
+    const upload = await postAction('uploadPhoto', { base64: window._fuelPhotoDataUrl, filename: `fuel-${payload.truck_number}-${payload.date}.jpg` });
+    if (upload.url) payload.receipt_photo_url = upload.url;
+  }
+  const result = await postAction('saveFuelLog', payload);
+  if (result.success) { alert('Fuel entry saved.'); resetFuelForm(); loadData(); }
+  else alert('Save failed: ' + (result.error || 'unknown error'));
+});
+
+document.getElementById('maint-save-btn').addEventListener('click', async () => {
+  const payload = {
+    truck_number: document.getElementById('maint-truck').value,
+    date: document.getElementById('maint-date').value,
+    service_type: document.getElementById('maint-service-type').value,
+    description: document.getElementById('maint-description').value,
+    cost: document.getElementById('maint-cost').value,
+    odometer: document.getElementById('maint-odometer').value,
+    shop_vendor: document.getElementById('maint-vendor').value
+  };
+  if (window._maintPhotoDataUrl) {
+    const upload = await postAction('uploadPhoto', { base64: window._maintPhotoDataUrl, filename: `maint-${payload.truck_number}-${payload.date}.jpg` });
+    if (upload.url) payload.invoice_photo_url = upload.url;
+  }
+  const result = await postAction('saveMaintenanceLog', payload);
+  if (result.success) { alert('Maintenance entry saved.'); resetMaintForm(); loadData(); }
+  else alert('Save failed: ' + (result.error || 'unknown error'));
+});
+
+function resetFuelForm() {
+  ['fuel-gallons','fuel-price','fuel-total','fuel-odometer','fuel-location','fuel-driver'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('fuel-photo-preview').style.display = 'none';
+  document.getElementById('fuel-photo-capture').style.display = 'block';
+  window._fuelPhotoDataUrl = null;
+  totalManuallyEdited = false;
+}
+function resetMaintForm() {
+  ['maint-description','maint-cost','maint-odometer','maint-vendor'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('maint-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('maint-photo-preview').style.display = 'none';
+  document.getElementById('maint-photo-capture').style.display = 'block';
+  window._maintPhotoDataUrl = null;
+}
+
+// ---- Dashboard ----
+function renderDashboard() {
+  const dash = STATE.dashboard || [];
+  const redCount = dash.reduce((n, t) => n + t.upcoming_maintenance.filter(m => m.status === 'red').length, 0);
+  const amberCount = dash.reduce((n, t) => n + t.upcoming_maintenance.filter(m => m.status === 'amber').length, 0);
+
+  document.getElementById('dash-metrics').innerHTML = `
+    <div class="metric"><div class="metric-label">Active Trucks</div><div class="metric-value">${dash.length}</div></div>
+    <div class="metric"><div class="metric-label">Overdue</div><div class="metric-value red">${redCount}</div></div>
+    <div class="metric"><div class="metric-label">Due Soon</div><div class="metric-value" style="color:var(--amber);">${amberCount}</div></div>
+  `;
+
+  document.getElementById('dash-trucks').innerHTML = dash.map(t => `
+    <div class="card">
+      <div class="truck-card-head">
+        <div class="truck-num">${t.truck_number}</div>
+        <div style="font-size:12px;color:var(--text2);">${t.current_odometer ? t.current_odometer.toLocaleString() + ' mi' : '—'} · last fuel ${t.last_fuel_date || '—'}</div>
+      </div>
+      ${t.upcoming_maintenance.map(m => `
+        <div class="due-row">
+          <div style="display:flex;align-items:center;gap:10px;"><span class="dot ${m.status}"></span>${m.service_type}</div>
+          <div style="font-size:12px;color:var(--text2);">
+            ${m.days_remaining != null ? (m.days_remaining <= 0 ? Math.abs(m.days_remaining) + 'd overdue' : m.days_remaining + 'd left') : ''}
+            ${m.miles_remaining != null ? (m.days_remaining != null ? ' · ' : '') + (m.miles_remaining <= 0 ? Math.abs(Math.round(m.miles_remaining)) + ' mi over' : Math.round(m.miles_remaining) + ' mi left') : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('') || '<div class="card">No trucks found — check the Trucks tab in the shared Sheet.</div>';
+}
+
+// ---- Reports ----
+function renderReports() {
+  const byTruck = {};
+  STATE.trucks.forEach(t => byTruck[t.truck_number] = { fuel: 0, maint: 0 });
+  STATE.fuelLog.forEach(f => { if (byTruck[f.truck_number]) byTruck[f.truck_number].fuel += f.total_cost; });
+  STATE.maintenanceLog.forEach(m => { if (byTruck[m.truck_number]) byTruck[m.truck_number].maint += m.cost; });
+
+  const tbody = document.querySelector('#reports-table tbody');
+  tbody.innerHTML = Object.entries(byTruck).map(([truck, c]) => `
+    <tr>
+      <td>${truck}</td>
+      <td>$${c.fuel.toFixed(2)}</td>
+      <td>$${c.maint.toFixed(2)}</td>
+      <td><strong>$${(c.fuel + c.maint).toFixed(2)}</strong></td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('reports-export-btn').addEventListener('click', () => {
+  alert('Excel export not wired yet — next build step, mirroring LoadTracker\'s export pattern.');
+});
+
+loadData();
+</script>
+</body>
+</html>
