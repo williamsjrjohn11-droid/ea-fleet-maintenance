@@ -131,6 +131,10 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 
 <div id="alert-banner">
   <div id="alert-banner-list"></div>
+  <div id="alert-banner-text-wrap" style="max-width:1100px;margin:8px auto 0;display:none;">
+    <button class="btn btn-sm" id="alert-banner-text-btn">📲 Text Alert</button>
+    <div id="alert-banner-contact-picker" style="display:none;margin-top:8px;flex-wrap:wrap;gap:6px;"></div>
+  </div>
 </div>
 
 <div class="container">
@@ -324,6 +328,25 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
         To change one truck's interval without affecting the rest of the fleet, add a new row with that truck's number filled in — it overrides the blank/default row for that truck only.
       </p>
     </div>
+    <div class="card">
+      <div class="card-title">Text Alerts</div>
+      <p style="font-size:14px;line-height:1.6;color:var(--text2);margin-bottom:14px;">
+        When anything's due soon or overdue, the banner at the top gets a <strong>Text Alert</strong> button. Tapping it opens your phone's own Messages app with the due list already filled in — you review it and hit send, same as the "Text driver" button in Dispatch Bridge. Nothing is sent automatically.
+        Add the numbers it should be able to text below (usually management, who can then relay it to drivers).
+      </p>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Name</label>
+          <input type="text" id="contact-name" class="field-input" placeholder="John">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Phone</label>
+          <input type="tel" id="contact-phone" class="field-input" placeholder="9725551234">
+        </div>
+      </div>
+      <button class="btn btn-sm" id="contact-add-btn">Add Contact</button>
+      <div id="contacts-list" style="margin-top:14px;"></div>
+    </div>
   </div>
 
 </div>
@@ -333,7 +356,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 // TODO on deploy: replace with the deployed Apps Script /exec URL (Deployment step 6 in DEPLOYMENT.md)
 const API_URL = 'https://script.google.com/macros/s/AKfycbxIgip3DXn4GLJSPVDGkDPdr1yUHA_Kq0JdLQ1Ku0PfQXkf2NUAYFcBl8RWECvSWtv-/exec';
 
-let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceRules: [], dashboard: [] };
+let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceRules: [], alertContacts: [], dashboard: [] };
 
 document.getElementById('ea-logo').src = 'data:image/png;base64,' + EA_LOGO_B64;
 document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
@@ -363,6 +386,7 @@ async function loadData() {
     populateTruckSelects();
     renderDashboard();
     renderReports();
+    renderContacts();
   } catch (err) {
     console.error('Load failed', err);
   } finally {
@@ -543,6 +567,52 @@ function renderAlertBanner(dash) {
   document.getElementById('alert-banner-list').innerHTML = items.map(i =>
     `<div class="alert-banner-item ${i.urgent ? 'urgent' : ''}">${i.urgent ? '🔴' : '🟡'} ${i.text}</div>`
   ).join('');
+
+  window._currentAlertItems = items;
+  document.getElementById('alert-banner-text-wrap').style.display = 'block';
+}
+
+// ---- Text Alert — builds one message from the current due/overdue list and
+// opens it in the phone's own Messages app (same sms: link pattern Dispatch
+// Bridge uses for "Text driver"). Nothing is sent automatically.
+function buildAlertMessage() {
+  const items = window._currentAlertItems || [];
+  if (!items.length) return '';
+  const lines = items.map(i => (i.urgent ? '[OVERDUE] ' : '[Due soon] ') + i.text);
+  return `EA Fleet Maintenance alert:\n${lines.join('\n')}`;
+}
+
+function buildSmsHref(phone, message) {
+  const cleanPhone = String(phone || '').replace(/[^\d+]/g, '');
+  if (!cleanPhone) return null;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const separator = isIOS ? '&' : '?';
+  return `sms:${cleanPhone}${separator}body=${encodeURIComponent(message)}`;
+}
+
+document.getElementById('alert-banner-text-btn').addEventListener('click', () => {
+  const activeContacts = (STATE.alertContacts || []).filter(c => c.active);
+  const message = buildAlertMessage();
+  if (!message) return;
+
+  if (activeContacts.length === 0) {
+    alert('No alert contacts saved yet — add one on the Help tab.');
+    return;
+  }
+  if (activeContacts.length === 1) {
+    window.location.href = buildSmsHref(activeContacts[0].phone, message);
+    return;
+  }
+  // Multiple contacts — show one tap target per person instead of guessing who to text.
+  const picker = document.getElementById('alert-banner-contact-picker');
+  picker.style.display = picker.style.display === 'flex' ? 'none' : 'flex';
+  picker.innerHTML = activeContacts.map(c =>
+    `<a class="btn btn-sm" style="text-decoration:none;" href="${buildSmsHref(c.phone, message)}">Text ${escapeHtml(c.name)}</a>`
+  ).join('');
+});
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 // ---- Reports ----
@@ -565,6 +635,45 @@ function renderReports() {
 
 document.getElementById('reports-export-btn').addEventListener('click', () => {
   alert('Excel export not wired yet — next build step, mirroring LoadTracker\'s export pattern.');
+});
+
+// ---- Alert Contacts (Help tab) ----
+function renderContacts() {
+  const list = document.getElementById('contacts-list');
+  const contacts = STATE.alertContacts || [];
+  if (!contacts.length) {
+    list.innerHTML = '<div style="font-size:13px;color:var(--text3);">No contacts saved yet.</div>';
+    return;
+  }
+  list.innerHTML = contacts.map(c => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-size:14px;font-weight:600;">${escapeHtml(c.name)}</div>
+        <div style="font-size:12px;color:var(--text2);">${escapeHtml(c.phone)}${c.active ? '' : ' — inactive'}</div>
+      </div>
+      <button class="btn btn-sm btn-red" data-contact-id="${c.id}">Remove</button>
+    </div>
+  `).join('');
+  list.querySelectorAll('[data-contact-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await postAction('deleteAlertContact', { id: btn.dataset.contactId });
+      loadData();
+    });
+  });
+}
+
+document.getElementById('contact-add-btn').addEventListener('click', async () => {
+  const name = document.getElementById('contact-name').value.trim();
+  const phone = document.getElementById('contact-phone').value.trim();
+  if (!name || !phone) { alert('Name and phone are both required.'); return; }
+  const result = await postAction('saveAlertContact', { name, phone, active: true });
+  if (result.success) {
+    document.getElementById('contact-name').value = '';
+    document.getElementById('contact-phone').value = '';
+    loadData();
+  } else {
+    alert('Save failed: ' + (result.error || 'unknown error'));
+  }
 });
 
 loadData();
