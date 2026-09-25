@@ -172,7 +172,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       <div class="field-row">
         <div class="field-group">
           <label class="field-label">Gallons</label>
-          <input type="number" step="0.001" id="fuel-gallons" class="field-input" placeholder="0.000">
+          <input type="number" step="0.001" id="fuel-gallons" class="field-input" placeholder="auto-calculated, editable">
         </div>
         <div class="field-group">
           <label class="field-label">Price / Gal</label>
@@ -514,17 +514,26 @@ function populateTruckSelects() {
   document.getElementById('ifta-miles-truck').innerHTML = opts;
 }
 
-// ---- Fuel: auto-calc total from gallons x price, but never overwrite a manual edit ----
+// ---- Fuel: auto-calc works either direction (Gallons+Price -> Total, or
+// Total+Price -> Gallons for prepay receipts that only show a dollar
+// amount), but never overwrite a field the user typed into by hand ----
 let totalManuallyEdited = false;
-document.getElementById('fuel-total').addEventListener('input', () => totalManuallyEdited = true);
-function recalcFuelTotal() {
-  if (totalManuallyEdited) return;
-  const g = parseFloat(document.getElementById('fuel-gallons').value) || 0;
+let gallonsManuallyEdited = false;
+document.getElementById('fuel-total').addEventListener('input', () => { totalManuallyEdited = true; recalcFuel(); });
+document.getElementById('fuel-gallons').addEventListener('input', () => { gallonsManuallyEdited = true; recalcFuel(); });
+document.getElementById('fuel-price').addEventListener('input', recalcFuel);
+function recalcFuel() {
+  const gEl = document.getElementById('fuel-gallons');
+  const tEl = document.getElementById('fuel-total');
+  const g = parseFloat(gEl.value) || 0;
   const p = parseFloat(document.getElementById('fuel-price').value) || 0;
-  document.getElementById('fuel-total').value = g && p ? (g * p).toFixed(2) : '';
+  const t = parseFloat(tEl.value) || 0;
+  if (!totalManuallyEdited && g && p) {
+    tEl.value = (g * p).toFixed(2);
+  } else if (!gallonsManuallyEdited && !g && p && t) {
+    gEl.value = (t / p).toFixed(3);
+  }
 }
-document.getElementById('fuel-gallons').addEventListener('input', recalcFuelTotal);
-document.getElementById('fuel-price').addEventListener('input', recalcFuelTotal);
 
 // ---- Photo capture (wiring only — AI extraction is next build step, see handoff) ----
 function wirePhotoCapture(captureId, inputId, previewId, onPhoto) {
@@ -610,6 +619,7 @@ function resetFuelForm() {
   document.getElementById('fuel-photo-capture').style.display = 'block';
   window._fuelPhotoDataUrl = null;
   totalManuallyEdited = false;
+  gallonsManuallyEdited = false;
 }
 function resetMaintForm() {
   ['maint-description','maint-cost','maint-odometer','maint-vendor','maint-receipt-number'].forEach(id => document.getElementById(id).value = '');
