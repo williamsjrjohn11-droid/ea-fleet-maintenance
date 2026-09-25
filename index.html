@@ -154,10 +154,11 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       <div class="card-title">New Fuel Entry</div>
 
       <div id="fuel-photo-capture" class="photo-capture">
-        📷 Tap to photograph the receipt<br><span style="font-size:12px;">AI will read gallons, price/gal, and total — confirm before saving</span>
+        📷 Tap, or drag a photo here<br><span style="font-size:12px;">AI reads gallons, price/gal & total — leaves gallons blank if the receipt doesn't show it, so it auto-fills from Total ÷ Price instead. Always confirm before saving.</span>
       </div>
       <img id="fuel-photo-preview" class="photo-preview" style="display:none;">
-      <input type="file" id="fuel-photo-input" accept="image/*" capture="environment" style="display:none;">
+      <div id="fuel-scan-status" style="display:none;font-size:13px;color:var(--text2);margin:-8px 0 16px;"></div>
+      <input type="file" id="fuel-photo-input" accept="image/*,application/pdf" style="display:none;">
 
       <div class="field-row">
         <div class="field-group">
@@ -220,10 +221,11 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       <div class="card-title">New Maintenance Entry</div>
 
       <div id="maint-photo-capture" class="photo-capture">
-        📷 Tap to photograph the invoice<br><span style="font-size:12px;">AI will read service type, cost, and vendor — confirm before saving</span>
+        📷 Tap, or drag a photo/PDF here<br><span style="font-size:12px;">AI reads date, cost, vendor & receipt # — confirm before saving</span>
       </div>
       <img id="maint-photo-preview" class="photo-preview" style="display:none;">
-      <input type="file" id="maint-photo-input" accept="image/*" capture="environment" style="display:none;">
+      <div id="maint-scan-status" style="display:none;font-size:13px;color:var(--text2);margin:-8px 0 16px;"></div>
+      <input type="file" id="maint-photo-input" accept="image/*,application/pdf" style="display:none;">
 
       <div class="field-row">
         <div class="field-group">
@@ -535,29 +537,91 @@ function recalcFuel() {
   }
 }
 
-// ---- Photo capture (wiring only — AI extraction is next build step, see handoff) ----
-function wirePhotoCapture(captureId, inputId, previewId, onPhoto) {
-  document.getElementById(captureId).addEventListener('click', () => document.getElementById(inputId).click());
-  document.getElementById(inputId).addEventListener('change', (e) => {
-    const file = e.target.files[0];
+// ---- Photo capture: tap to pick a file, or drag-and-drop one onto the box.
+// After a file loads, it's sent to the AI receipt scanner, which fills in
+// whatever fields it can read (never auto-saves — always review before Save). ----
+function wirePhotoCapture(captureId, inputId, previewId, kind, onPhoto) {
+  const captureEl = document.getElementById(captureId);
+  const inputEl = document.getElementById(inputId);
+  const originalCaptureHtml = captureEl.innerHTML;
+
+  function handleFile(file) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       const preview = document.getElementById(previewId);
-      preview.src = reader.result;
-      preview.style.display = 'block';
-      document.getElementById(captureId).style.display = 'none';
-      onPhoto(reader.result); // TODO: send to AI vision extraction, auto-fill fields, user confirms
+      if (file.type === 'application/pdf') {
+        preview.style.display = 'none';
+      } else {
+        preview.src = reader.result;
+        preview.style.display = 'block';
+      }
+      captureEl.style.display = 'none';
+      onPhoto(reader.result, file.name);
+      scanReceipt(reader.result, kind, file.name);
     };
     reader.readAsDataURL(file);
+  }
+
+  captureEl.addEventListener('click', () => inputEl.click());
+  inputEl.addEventListener('change', (e) => handleFile(e.target.files[0]));
+
+  ['dragenter', 'dragover'].forEach(evt => captureEl.addEventListener(evt, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    captureEl.style.borderColor = 'var(--accent)';
+  }));
+  ['dragleave', 'drop'].forEach(evt => captureEl.addEventListener(evt, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    captureEl.style.borderColor = '';
+  }));
+  captureEl.addEventListener('drop', (e) => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleFile(file);
   });
+
+  captureEl._resetHtml = originalCaptureHtml;
 }
-wirePhotoCapture('fuel-photo-capture', 'fuel-photo-input', 'fuel-photo-preview', (dataUrl) => {
+wirePhotoCapture('fuel-photo-capture', 'fuel-photo-input', 'fuel-photo-preview', 'fuel', (dataUrl) => {
   window._fuelPhotoDataUrl = dataUrl;
 });
-wirePhotoCapture('maint-photo-capture', 'maint-photo-input', 'maint-photo-preview', (dataUrl) => {
+wirePhotoCapture('maint-photo-capture', 'maint-photo-input', 'maint-photo-preview', 'maintenance', (dataUrl) => {
   window._maintPhotoDataUrl = dataUrl;
 });
+
+async function scanReceipt(dataUrl, kind, filename) {
+  const statusId = kind === 'fuel' ? 'fuel-scan-status' : 'maint-scan-status';
+  const statusEl = document.getElementById(statusId);
+  if (statusEl) { statusEl.textContent = '🔎 Reading receipt…'; statusEl.style.display = 'block'; }
+
+  const result = await postAction('extractReceipt', { base64: dataUrl, kind, filename });
+
+  if (!result || result.error) {
+    if (statusEl) { statusEl.textContent = result && result.error ? result.error : 'Could not read the receipt — fill it in by hand.'; }
+    return;
+  }
+
+  const f = result.fields || {};
+  if (kind === 'fuel') {
+    if (f.gallons != null) { document.getElementById('fuel-gallons').value = f.gallons; gallonsManuallyEdited = false; }
+    if (f.price_per_gal != null) document.getElementById('fuel-price').value = f.price_per_gal;
+    if (f.total_cost != null) { document.getElementById('fuel-total').value = f.total_cost; totalManuallyEdited = false; }
+    if (f.date) document.getElementById('fuel-date').value = f.date;
+    if (f.location) document.getElementById('fuel-location').value = f.location;
+    if (f.state) document.getElementById('fuel-state').value = f.state;
+    if (f.card_last4) document.getElementById('fuel-card').value = f.card_last4;
+    recalcFuel(); // fills gallons from total/price if the receipt didn't print gallons
+    if (statusEl) statusEl.textContent = f.gallons == null
+      ? '✅ Read the receipt — gallons weren\'t printed on it (likely prepay), so it\'s calculated from Total ÷ Price. Double-check before saving.'
+      : '✅ Read the receipt — double-check the numbers before saving.';
+  } else {
+    if (f.date) document.getElementById('maint-date').value = f.date;
+    if (f.cost != null) document.getElementById('maint-cost').value = f.cost;
+    if (f.shop_vendor) document.getElementById('maint-vendor').value = f.shop_vendor;
+    if (f.receipt_number) document.getElementById('maint-receipt-number').value = f.receipt_number;
+    if (f.description) document.getElementById('maint-description').value = f.description;
+    if (statusEl) statusEl.textContent = '✅ Read the invoice — double-check before saving.';
+  }
+}
 
 // ---- Save handlers ----
 async function postAction(action, payload) {
@@ -617,6 +681,8 @@ function resetFuelForm() {
   document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('fuel-photo-preview').style.display = 'none';
   document.getElementById('fuel-photo-capture').style.display = 'block';
+  document.getElementById('fuel-scan-status').style.display = 'none';
+  document.getElementById('fuel-photo-input').value = '';
   window._fuelPhotoDataUrl = null;
   totalManuallyEdited = false;
   gallonsManuallyEdited = false;
@@ -626,6 +692,8 @@ function resetMaintForm() {
   document.getElementById('maint-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('maint-photo-preview').style.display = 'none';
   document.getElementById('maint-photo-capture').style.display = 'block';
+  document.getElementById('maint-scan-status').style.display = 'none';
+  document.getElementById('maint-photo-input').value = '';
   window._maintPhotoDataUrl = null;
 }
 
