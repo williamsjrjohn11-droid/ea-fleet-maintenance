@@ -540,25 +540,50 @@ function recalcFuel() {
 // ---- Photo capture: tap to pick a file, or drag-and-drop one onto the box.
 // After a file loads, it's sent to the AI receipt scanner, which fills in
 // whatever fields it can read (never auto-saves — always review before Save). ----
+// Shrinks a photo before it ever leaves the phone — phone camera photos are
+// often 3-10MB, which is slow to upload and can stall the AI scan. Full-res
+// PDFs pass through untouched (canvas can't read them).
+function compressImageDataUrl(dataUrl, maxDim, quality) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl); // fall back to the original if it won't decode
+    img.src = dataUrl;
+  });
+}
+
 function wirePhotoCapture(captureId, inputId, previewId, kind, onPhoto) {
   const captureEl = document.getElementById(captureId);
   const inputEl = document.getElementById(inputId);
   const originalCaptureHtml = captureEl.innerHTML;
 
-  function handleFile(file) {
+  async function handleFile(file) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const preview = document.getElementById(previewId);
-      if (file.type === 'application/pdf') {
-        preview.style.display = 'none';
-      } else {
-        preview.src = reader.result;
+      let finalDataUrl = reader.result;
+      if (file.type !== 'application/pdf') {
+        finalDataUrl = await compressImageDataUrl(reader.result, 1600, 0.85);
+        preview.src = finalDataUrl;
         preview.style.display = 'block';
+      } else {
+        preview.style.display = 'none';
       }
       captureEl.style.display = 'none';
-      onPhoto(reader.result, file.name);
-      scanReceipt(reader.result, kind, file.name);
+      onPhoto(finalDataUrl, file.name);
+      scanReceipt(finalDataUrl, kind, file.name);
     };
     reader.readAsDataURL(file);
   }
@@ -593,7 +618,16 @@ async function scanReceipt(dataUrl, kind, filename) {
   const statusEl = document.getElementById(statusId);
   if (statusEl) { statusEl.textContent = '🔎 Reading receipt…'; statusEl.style.display = 'block'; }
 
-  const result = await postAction('extractReceipt', { base64: dataUrl, kind, filename });
+  let result;
+  try {
+    result = await withTimeout(
+      postAction('extractReceipt', { base64: dataUrl, kind, filename }),
+      25000,
+      'Taking too long to read — fill it in by hand, or try a smaller/clearer photo.'
+    );
+  } catch (err) {
+    result = { error: 'Could not read the receipt — fill it in by hand.' };
+  }
 
   if (!result || result.error) {
     if (statusEl) { statusEl.textContent = result && result.error ? result.error : 'Could not read the receipt — fill it in by hand.'; }
@@ -628,10 +662,24 @@ async function postAction(action, payload) {
   setSyncing(true);
   try {
     const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action, payload }) });
-    return await res.json();
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (parseErr) {
+      return { error: 'Server returned something unexpected — try again in a moment.' };
+    }
+  } catch (networkErr) {
+    return { error: 'Could not reach the server — check your connection and try again.' };
   } finally {
     setSyncing(false);
   }
+}
+
+function withTimeout(promise, ms, timeoutMessage) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve({ error: timeoutMessage }), ms))
+  ]);
 }
 
 document.getElementById('fuel-save-btn').addEventListener('click', async () => {
