@@ -865,8 +865,8 @@ async function scanReceipt(dataUrl, kind, filename) {
   try {
     result = await withTimeout(
       postAction('extractReceipt', { base64: dataUrl, kind, filename }),
-      25000,
-      'Taking too long to read — fill it in by hand, or try a smaller/clearer photo.'
+      45000,
+      'Taking too long to read (even after retrying) — fill it in by hand, or try a smaller/clearer photo.'
     );
   } catch (err) {
     result = { error: 'Could not read the receipt — fill it in by hand.' };
