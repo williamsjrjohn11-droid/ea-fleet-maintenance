@@ -465,6 +465,14 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
   <div id="panel-citations" class="panel">
     <div class="card">
       <div class="card-title">Citations</div>
+
+      <div id="citation-photo-capture" class="photo-capture">
+        📷 Tap, or drag a photo/PDF of the citation here<br><span style="font-size:12px;">AI reads date, driver, county, violation & fine — confirm before saving</span>
+      </div>
+      <img id="citation-photo-preview" class="photo-preview" style="display:none;">
+      <div id="citation-scan-status" style="display:none;font-size:13px;color:var(--text2);margin:-8px 0 16px;"></div>
+      <input type="file" id="citation-photo-input" accept="image/*,application/pdf" style="display:none;">
+
       <div class="field-row">
         <div class="field-group">
           <label class="field-label">Truck</label>
@@ -757,9 +765,12 @@ wirePhotoCapture('fuel-photo-capture', 'fuel-photo-input', 'fuel-photo-preview',
 wirePhotoCapture('maint-photo-capture', 'maint-photo-input', 'maint-photo-preview', 'maintenance', (dataUrl) => {
   window._maintPhotoDataUrl = dataUrl;
 });
+wirePhotoCapture('citation-photo-capture', 'citation-photo-input', 'citation-photo-preview', 'citation', (dataUrl) => {
+  window._citationPhotoDataUrl = dataUrl;
+});
 
 async function scanReceipt(dataUrl, kind, filename) {
-  const statusId = kind === 'fuel' ? 'fuel-scan-status' : 'maint-scan-status';
+  const statusId = { fuel: 'fuel-scan-status', maintenance: 'maint-scan-status', citation: 'citation-scan-status' }[kind];
   const statusEl = document.getElementById(statusId);
   if (statusEl) { statusEl.textContent = '🔎 Reading receipt…'; statusEl.style.display = 'block'; }
 
@@ -795,7 +806,7 @@ async function scanReceipt(dataUrl, kind, filename) {
     if (statusEl) statusEl.textContent = f.gallons == null
       ? '✅ Read the receipt — gallons weren\'t printed on it (likely prepay), so it\'s calculated from Total ÷ Price. Double-check before saving.'
       : '✅ Read the receipt — double-check the numbers before saving.';
-  } else {
+  } else if (kind === 'maintenance') {
     if (f.date) document.getElementById('maint-date').value = f.date;
     if (f.cost != null) document.getElementById('maint-cost').value = f.cost;
     if (f.shop_vendor) document.getElementById('maint-vendor').value = f.shop_vendor;
@@ -809,6 +820,18 @@ async function scanReceipt(dataUrl, kind, filename) {
     if (statusEl) statusEl.textContent = Array.isArray(f.parts) && f.parts.length
       ? `✅ Read the invoice — captured ${f.parts.length} line item${f.parts.length === 1 ? '' : 's'} below. Double-check before saving.`
       : '✅ Read the invoice — double-check before saving.';
+  } else if (kind === 'citation') {
+    if (f.date) document.getElementById('citation-date').value = f.date;
+    if (f.driver) document.getElementById('citation-driver').value = f.driver;
+    if (f.county) document.getElementById('citation-county').value = f.county;
+    if (f.violation) document.getElementById('citation-violation').value = f.violation;
+    if (f.fine_amount != null) document.getElementById('citation-fine').value = f.fine_amount;
+    if (f.notes) document.getElementById('citation-notes').value = f.notes;
+    if (f.truck_number) {
+      const truckSel = document.getElementById('citation-truck');
+      if ([...truckSel.options].some(o => o.value === f.truck_number)) truckSel.value = f.truck_number;
+    }
+    if (statusEl) statusEl.textContent = '✅ Read the citation — double-check before saving.';
   }
 }
 
@@ -1228,11 +1251,20 @@ document.getElementById('citation-save-btn').addEventListener('click', async () 
     action_complete: document.getElementById('citation-complete').checked,
     notes: document.getElementById('citation-notes').value.trim()
   };
+  if (window._citationPhotoDataUrl) {
+    const upload = await postAction('uploadPhoto', { base64: window._citationPhotoDataUrl, filename: `citation-${truck_number}-${payload.date}.jpg` });
+    if (upload.url) payload.citation_photo_url = upload.url;
+  }
   const result = await postAction('saveCitation', payload);
   if (result.success) {
     ['citation-driver','citation-county','citation-violation','citation-fine','citation-notes'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('citation-complete').checked = false;
     document.getElementById('citation-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('citation-photo-preview').style.display = 'none';
+    document.getElementById('citation-photo-capture').style.display = 'block';
+    document.getElementById('citation-scan-status').style.display = 'none';
+    document.getElementById('citation-photo-input').value = '';
+    window._citationPhotoDataUrl = null;
     loadData();
   } else {
     alert('Save failed: ' + (result.error || 'unknown error'));
