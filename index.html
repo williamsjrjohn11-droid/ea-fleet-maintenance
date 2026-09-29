@@ -168,6 +168,10 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       </div>
       <img id="fuel-photo-preview" class="photo-preview" style="display:none;">
       <div id="fuel-scan-status" style="display:none;font-size:13px;color:var(--text2);margin:-8px 0 16px;"></div>
+      <div id="fuel-photo-actions" style="display:none;gap:8px;margin:-8px 0 16px;">
+        <button type="button" class="btn btn-sm" id="fuel-retry-scan-btn">🔁 Retry Scan</button>
+        <button type="button" class="btn btn-sm" id="fuel-remove-photo-btn">✕ Remove Photo</button>
+      </div>
       <input type="file" id="fuel-photo-input" accept="image/*,application/pdf" style="display:none;">
 
       <div class="field-row">
@@ -252,6 +256,10 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       </div>
       <img id="maint-photo-preview" class="photo-preview" style="display:none;">
       <div id="maint-scan-status" style="display:none;font-size:13px;color:var(--text2);margin:-8px 0 16px;"></div>
+      <div id="maint-photo-actions" style="display:none;gap:8px;margin:-8px 0 16px;">
+        <button type="button" class="btn btn-sm" id="maint-retry-scan-btn">🔁 Retry Scan</button>
+        <button type="button" class="btn btn-sm" id="maint-remove-photo-btn">✕ Remove Photo</button>
+      </div>
       <input type="file" id="maint-photo-input" accept="image/*,application/pdf" style="display:none;">
 
       <div class="field-row">
@@ -490,6 +498,10 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       </div>
       <img id="citation-photo-preview" class="photo-preview" style="display:none;">
       <div id="citation-scan-status" style="display:none;font-size:13px;color:var(--text2);margin:-8px 0 16px;"></div>
+      <div id="citation-photo-actions" style="display:none;gap:8px;margin:-8px 0 16px;">
+        <button type="button" class="btn btn-sm" id="citation-retry-scan-btn">🔁 Retry Scan</button>
+        <button type="button" class="btn btn-sm" id="citation-remove-photo-btn">✕ Remove Photo</button>
+      </div>
       <input type="file" id="citation-photo-input" accept="image/*,application/pdf" style="display:none;">
 
       <div class="field-row">
@@ -736,9 +748,20 @@ function compressImageDataUrl(dataUrl, maxDim, quality) {
   });
 }
 
+// Central lookup of every photo-capture zone's element ids + which global
+// variable holds its current data URL, so remove/retry can work generically
+// across the fuel, maintenance and citation panels.
+const KIND_UI = {
+  fuel: { captureId: 'fuel-photo-capture', inputId: 'fuel-photo-input', previewId: 'fuel-photo-preview', statusId: 'fuel-scan-status', actionsId: 'fuel-photo-actions', varName: '_fuelPhotoDataUrl' },
+  maintenance: { captureId: 'maint-photo-capture', inputId: 'maint-photo-input', previewId: 'maint-photo-preview', statusId: 'maint-scan-status', actionsId: 'maint-photo-actions', varName: '_maintPhotoDataUrl' },
+  citation: { captureId: 'citation-photo-capture', inputId: 'citation-photo-input', previewId: 'citation-photo-preview', statusId: 'citation-scan-status', actionsId: 'citation-photo-actions', varName: '_citationPhotoDataUrl' }
+};
+const _photoFilenames = {};
+
 function wirePhotoCapture(captureId, inputId, previewId, kind, onPhoto) {
   const captureEl = document.getElementById(captureId);
   const inputEl = document.getElementById(inputId);
+  const ui = KIND_UI[kind];
   const originalCaptureHtml = captureEl.innerHTML;
 
   async function handleFile(file) {
@@ -755,6 +778,11 @@ function wirePhotoCapture(captureId, inputId, previewId, kind, onPhoto) {
         preview.style.display = 'none';
       }
       captureEl.style.display = 'none';
+      if (ui) {
+        _photoFilenames[kind] = file.name;
+        const actionsEl = document.getElementById(ui.actionsId);
+        if (actionsEl) actionsEl.style.display = 'flex';
+      }
       onPhoto(finalDataUrl, file.name);
       scanReceipt(finalDataUrl, kind, file.name);
     };
@@ -788,6 +816,45 @@ wirePhotoCapture('maint-photo-capture', 'maint-photo-input', 'maint-photo-previe
 wirePhotoCapture('citation-photo-capture', 'citation-photo-input', 'citation-photo-preview', 'citation', (dataUrl) => {
   window._citationPhotoDataUrl = dataUrl;
 });
+
+// Wrong photo uploaded? Clear it out and go back to an empty capture zone —
+// no page reload needed, and nothing gets saved until a new photo (or none)
+// is confirmed.
+function removePhoto(kind) {
+  const ui = KIND_UI[kind];
+  if (!ui) return;
+  window[ui.varName] = null;
+  delete _photoFilenames[kind];
+
+  const captureEl = document.getElementById(ui.captureId);
+  const inputEl = document.getElementById(ui.inputId);
+  const previewEl = document.getElementById(ui.previewId);
+  const statusEl = document.getElementById(ui.statusId);
+  const actionsEl = document.getElementById(ui.actionsId);
+
+  if (inputEl) inputEl.value = '';
+  if (previewEl) { previewEl.src = ''; previewEl.style.display = 'none'; }
+  if (statusEl) { statusEl.textContent = ''; statusEl.style.display = 'none'; }
+  if (actionsEl) actionsEl.style.display = 'none';
+  if (captureEl) { captureEl.style.display = 'block'; captureEl.style.borderColor = ''; }
+}
+
+// Scan failed (overload, blurry photo, etc.) but the photo itself was fine —
+// re-run the AI read on the same image without asking for a re-upload.
+function retryScan(kind) {
+  const ui = KIND_UI[kind];
+  if (!ui) return;
+  const dataUrl = window[ui.varName];
+  if (!dataUrl) return;
+  scanReceipt(dataUrl, kind, _photoFilenames[kind] || 'receipt');
+}
+
+document.getElementById('fuel-remove-photo-btn').addEventListener('click', () => removePhoto('fuel'));
+document.getElementById('fuel-retry-scan-btn').addEventListener('click', () => retryScan('fuel'));
+document.getElementById('maint-remove-photo-btn').addEventListener('click', () => removePhoto('maintenance'));
+document.getElementById('maint-retry-scan-btn').addEventListener('click', () => retryScan('maintenance'));
+document.getElementById('citation-remove-photo-btn').addEventListener('click', () => removePhoto('citation'));
+document.getElementById('citation-retry-scan-btn').addEventListener('click', () => retryScan('citation'));
 
 async function scanReceipt(dataUrl, kind, filename) {
   const statusId = { fuel: 'fuel-scan-status', maintenance: 'maint-scan-status', citation: 'citation-scan-status' }[kind];
@@ -955,11 +1022,7 @@ function resetFuelForm() {
   ['fuel-gallons','fuel-price','fuel-total','fuel-odometer','fuel-location','fuel-driver','fuel-card','fuel-time'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('fuel-payment-type').value = '';
   document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
-  document.getElementById('fuel-photo-preview').style.display = 'none';
-  document.getElementById('fuel-photo-capture').style.display = 'block';
-  document.getElementById('fuel-scan-status').style.display = 'none';
-  document.getElementById('fuel-photo-input').value = '';
-  window._fuelPhotoDataUrl = null;
+  removePhoto('fuel');
   totalManuallyEdited = false;
   gallonsManuallyEdited = false;
 }
@@ -967,11 +1030,7 @@ function resetMaintForm() {
   ['maint-description','maint-cost','maint-odometer','maint-vendor','maint-receipt-number'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('maint-payment-type').value = '';
   document.getElementById('maint-date').value = new Date().toISOString().slice(0,10);
-  document.getElementById('maint-photo-preview').style.display = 'none';
-  document.getElementById('maint-photo-capture').style.display = 'block';
-  document.getElementById('maint-scan-status').style.display = 'none';
-  document.getElementById('maint-photo-input').value = '';
-  window._maintPhotoDataUrl = null;
+  removePhoto('maintenance');
   clearPartRows();
 }
 
@@ -1406,11 +1465,7 @@ document.getElementById('citation-save-btn').addEventListener('click', async () 
     ['citation-driver','citation-county','citation-violation','citation-fine','citation-notes'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('citation-complete').checked = false;
     document.getElementById('citation-date').value = new Date().toISOString().slice(0,10);
-    document.getElementById('citation-photo-preview').style.display = 'none';
-    document.getElementById('citation-photo-capture').style.display = 'block';
-    document.getElementById('citation-scan-status').style.display = 'none';
-    document.getElementById('citation-photo-input').value = '';
-    window._citationPhotoDataUrl = null;
+    removePhoto('citation');
     loadData();
   } else {
     alert('Save failed: ' + (result.error || 'unknown error'));
