@@ -55,6 +55,8 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--text);min-
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:14px;}
 .card-title{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;}
 .table-wrap{overflow-x:auto;}
+.swipe-hint{display:none;font-size:11px;color:var(--text3);text-align:right;margin-bottom:4px;}
+@media(max-width:600px){.swipe-hint{display:block;}}
 table{width:100%;border-collapse:collapse;font-size:13px;}
 th{text-align:left;padding:9px 10px;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);white-space:nowrap;}
 td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;}
@@ -90,6 +92,8 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
   .metrics{grid-template-columns:1fr 1fr;}
   .metric-value{font-size:22px;}
   .container{padding:16px 12px;}
+  .card{padding:16px;}
+  th,td{padding:7px 6px;font-size:12px;}
 }
 </style>
 <style>
@@ -99,6 +103,10 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 .field-input{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;padding:10px 12px;}
 .field-input:focus{outline:none;border-color:var(--accent);}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.part-row{display:grid;grid-template-columns:1fr 2fr 1fr auto;gap:8px;margin-bottom:8px;align-items:center;}
+.part-row input{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-family:'Barlow',sans-serif;font-size:13px;padding:8px 10px;width:100%;}
+.part-remove-btn{background:none;border:none;color:var(--red);font-size:18px;cursor:pointer;padding:4px 8px;line-height:1;}
+@media (max-width:640px){.part-row{grid-template-columns:1fr 1fr;}}
 .photo-capture{border:1.5px dashed var(--border2);border-radius:var(--radius-lg);padding:24px;text-align:center;cursor:pointer;color:var(--text2);margin-bottom:16px;}
 .photo-capture:hover{border-color:var(--accent);color:var(--text);}
 .photo-preview{width:100%;max-height:260px;object-fit:contain;border-radius:var(--radius);margin-bottom:16px;}
@@ -145,6 +153,8 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     <button class="tab" data-panel="panel-dash">Dashboard</button>
     <button class="tab" data-panel="panel-reports">Reports</button>
     <button class="tab" data-panel="panel-ifta">IFTA</button>
+    <button class="tab" data-panel="panel-contacts">Contacts</button>
+    <button class="tab" data-panel="panel-citations">Citations</button>
     <button class="tab" data-panel="panel-help">Help</button>
   </div>
 
@@ -168,6 +178,23 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
         <div class="field-group">
           <label class="field-label">Date</label>
           <input type="date" id="fuel-date" class="field-input">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Time</label>
+          <input type="time" id="fuel-time" class="field-input">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Payment Type</label>
+          <select id="fuel-payment-type" class="field-input">
+            <option value="">—</option>
+            <option>Cash</option>
+            <option>Credit Card</option>
+            <option>Debit Card</option>
+            <option>Check</option>
+            <option>Fleet Card</option>
+          </select>
         </div>
       </div>
       <div class="field-row">
@@ -221,7 +248,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       <div class="card-title">New Maintenance Entry</div>
 
       <div id="maint-photo-capture" class="photo-capture">
-        📷 Tap, or drag a photo/PDF here<br><span style="font-size:12px;">AI reads date, cost, vendor & receipt # — confirm before saving</span>
+        📷 Tap, or drag a photo/PDF here<br><span style="font-size:12px;">AI reads date, cost, vendor, receipt # & every line item on the invoice — confirm before saving</span>
       </div>
       <img id="maint-photo-preview" class="photo-preview" style="display:none;">
       <div id="maint-scan-status" style="display:none;font-size:13px;color:var(--text2);margin:-8px 0 16px;"></div>
@@ -272,14 +299,35 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
           <input type="text" id="maint-receipt-number" class="field-input">
         </div>
       </div>
+      <div class="field-group">
+        <label class="field-label">Payment Type</label>
+        <select id="maint-payment-type" class="field-input">
+          <option value="">—</option>
+          <option>Cash</option>
+          <option>Credit Card</option>
+          <option>Debit Card</option>
+          <option>Check</option>
+          <option>Fleet Card</option>
+        </select>
+      </div>
 
-      <button class="btn btn-green btn-full" id="maint-save-btn">Save Maintenance Entry</button>
+      <div class="field-group" style="margin-top:8px;">
+        <label class="field-label">Parts / Line Items (optional — every item on the invoice)</label>
+        <div id="maint-parts-list"></div>
+        <button type="button" class="btn btn-full" id="maint-add-part-btn" style="margin-top:8px;">+ Add Part / Line Item</button>
+      </div>
+
+      <button class="btn btn-green btn-full" id="maint-save-btn" style="margin-top:16px;">Save Maintenance Entry</button>
     </div>
   </div>
 
   <!-- ==================== DASHBOARD ==================== -->
   <div id="panel-dash" class="panel">
     <div class="metrics" id="dash-metrics"></div>
+    <div class="card" id="dash-payment-card" style="margin-bottom:20px;">
+      <div class="card-title">By Payment Type (fleet-wide)</div>
+      <div class="metrics" id="dash-payment-breakdown"></div>
+    </div>
     <div id="dash-trucks"></div>
   </div>
 
@@ -289,11 +337,20 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       <div class="card-title">Cost Per Truck</div>
       <div class="table-wrap">
         <table id="reports-table">
-          <thead><tr><th>Truck</th><th>Fuel Cost</th><th>Maintenance Cost</th><th>Total</th></tr></thead>
+          <thead><tr><th>Truck</th><th>Fuel</th><th>Maint.</th><th>Total</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
       <button class="btn btn-sm" id="reports-export-btn" style="margin-top:14px;">Export to Excel</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Cost By Payment Type</div>
+      <div class="table-wrap">
+        <table id="reports-payment-table">
+          <thead><tr><th>Payment Type</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -367,6 +424,90 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     </div>
   </div>
 
+  <!-- ==================== CONTACTS ==================== -->
+  <div id="panel-contacts" class="panel">
+    <div class="card">
+      <div class="card-title">Vendor / Shop Contacts</div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Company Name</label>
+          <input type="text" id="vendor-company" class="field-input" placeholder="Premier Truck Group">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Contact Name</label>
+          <input type="text" id="vendor-contact-name" class="field-input">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Phone</label>
+          <input type="text" id="vendor-phone" class="field-input">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Email</label>
+          <input type="email" id="vendor-email" class="field-input">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Services Performed</label>
+        <input type="text" id="vendor-services" class="field-input" placeholder="Brakes, diesel repair, parts">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Notes</label>
+        <input type="text" id="vendor-notes" class="field-input">
+      </div>
+      <button class="btn btn-green btn-full" id="vendor-save-btn">Save Contact</button>
+      <div id="vendor-contacts-list" style="margin-top:16px;"></div>
+    </div>
+  </div>
+
+  <!-- ==================== CITATIONS ==================== -->
+  <div id="panel-citations" class="panel">
+    <div class="card">
+      <div class="card-title">Citations</div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Truck</label>
+          <select id="citation-truck" class="field-input"></select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Date</label>
+          <input type="date" id="citation-date" class="field-input">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Driver</label>
+          <input type="text" id="citation-driver" class="field-input">
+        </div>
+        <div class="field-group">
+          <label class="field-label">County</label>
+          <input type="text" id="citation-county" class="field-input">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Violation</label>
+        <input type="text" id="citation-violation" class="field-input" placeholder="e.g. Log violation, equipment">
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Fine Amount</label>
+          <input type="number" step="0.01" id="citation-fine" class="field-input">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Notes</label>
+          <input type="text" id="citation-notes" class="field-input">
+        </div>
+      </div>
+      <div class="field-group" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="citation-complete" style="width:18px;height:18px;">
+        <label for="citation-complete" style="font-size:13px;color:var(--text2);">Action Complete</label>
+      </div>
+      <button class="btn btn-green btn-full" id="citation-save-btn">Save Citation</button>
+      <div id="citations-list" style="margin-top:16px;"></div>
+    </div>
+  </div>
+
   <!-- ==================== HELP ==================== -->
   <div id="panel-help" class="panel">
     <div class="card">
@@ -435,13 +576,14 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 // TODO on deploy: replace with the deployed Apps Script /exec URL (Deployment step 6 in DEPLOYMENT.md)
 const API_URL = 'https://script.google.com/macros/s/AKfycbxIgip3DXn4GLJSPVDGkDPdr1yUHA_Kq0JdLQ1Ku0PfQXkf2NUAYFcBl8RWECvSWtv-/exec';
 
-let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceRules: [], alertContacts: [], iftaMileage: [], iftaRates: [], dashboard: [] };
+let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceParts: [], maintenanceRules: [], alertContacts: [], iftaMileage: [], iftaRates: [], contacts: [], citations: [], dashboard: [], paymentBreakdown: { fleet: [], by_truck: {} } };
 
 const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
 
 document.getElementById('ea-logo').src = 'data:image/png;base64,' + EA_LOGO_B64;
 document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
 document.getElementById('maint-date').value = new Date().toISOString().slice(0,10);
+document.getElementById('citation-date').value = new Date().toISOString().slice(0,10);
 
 // State dropdowns default to TX (home base) but any state can be picked.
 ['fuel-state', 'ifta-miles-state', 'ifta-rate-state'].forEach(id => {
@@ -496,6 +638,8 @@ async function loadData() {
     renderDashboard();
     renderReports();
     renderContacts();
+    renderVendorContacts();
+    renderCitations();
     renderIftaMileageList();
     renderIftaRatesList();
   } catch (err) {
@@ -514,6 +658,7 @@ function populateTruckSelects() {
   document.getElementById('maint-truck').innerHTML = opts;
   document.getElementById('ifta-report-truck').innerHTML = opts;
   document.getElementById('ifta-miles-truck').innerHTML = opts;
+  document.getElementById('citation-truck').innerHTML = opts;
 }
 
 // ---- Fuel: auto-calc works either direction (Gallons+Price -> Total, or
@@ -635,14 +780,17 @@ async function scanReceipt(dataUrl, kind, filename) {
   }
 
   const f = result.fields || {};
+  const PAYMENT_OPTIONS = ['Cash', 'Credit Card', 'Debit Card', 'Check', 'Fleet Card'];
   if (kind === 'fuel') {
     if (f.gallons != null) { document.getElementById('fuel-gallons').value = f.gallons; gallonsManuallyEdited = false; }
     if (f.price_per_gal != null) document.getElementById('fuel-price').value = f.price_per_gal;
     if (f.total_cost != null) { document.getElementById('fuel-total').value = f.total_cost; totalManuallyEdited = false; }
     if (f.date) document.getElementById('fuel-date').value = f.date;
+    if (f.time) { const t24 = to24Hour_(f.time); if (t24) document.getElementById('fuel-time').value = t24; }
     if (f.location) document.getElementById('fuel-location').value = f.location;
     if (f.state) document.getElementById('fuel-state').value = f.state;
     if (f.card_last4) document.getElementById('fuel-card').value = f.card_last4;
+    if (f.payment_type && PAYMENT_OPTIONS.includes(f.payment_type)) document.getElementById('fuel-payment-type').value = f.payment_type;
     recalcFuel(); // fills gallons from total/price if the receipt didn't print gallons
     if (statusEl) statusEl.textContent = f.gallons == null
       ? '✅ Read the receipt — gallons weren\'t printed on it (likely prepay), so it\'s calculated from Total ÷ Price. Double-check before saving.'
@@ -653,8 +801,32 @@ async function scanReceipt(dataUrl, kind, filename) {
     if (f.shop_vendor) document.getElementById('maint-vendor').value = f.shop_vendor;
     if (f.receipt_number) document.getElementById('maint-receipt-number').value = f.receipt_number;
     if (f.description) document.getElementById('maint-description').value = f.description;
-    if (statusEl) statusEl.textContent = '✅ Read the invoice — double-check before saving.';
+    if (f.payment_type && PAYMENT_OPTIONS.includes(f.payment_type)) document.getElementById('maint-payment-type').value = f.payment_type;
+    if (Array.isArray(f.parts) && f.parts.length) {
+      clearPartRows();
+      f.parts.forEach(p => addPartRow(p.part_number, p.description, p.cost));
+    }
+    if (statusEl) statusEl.textContent = Array.isArray(f.parts) && f.parts.length
+      ? `✅ Read the invoice — captured ${f.parts.length} line item${f.parts.length === 1 ? '' : 's'} below. Double-check before saving.`
+      : '✅ Read the invoice — double-check before saving.';
   }
+}
+
+// "2:51 PM" / "14:51" -> "14:51" for an <input type="time">. Returns '' if unparseable.
+function to24Hour_(timeStr) {
+  const s = String(timeStr).trim();
+  let m = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m) {
+    let h = parseInt(m[1], 10);
+    const min = m[2];
+    const ampm = m[3].toUpperCase();
+    if (ampm === 'PM' && h !== 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return String(h).padStart(2, '0') + ':' + min;
+  }
+  m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m) return m[1].padStart(2, '0') + ':' + m[2];
+  return '';
 }
 
 // ---- Save handlers ----
@@ -686,6 +858,7 @@ document.getElementById('fuel-save-btn').addEventListener('click', async () => {
   const payload = {
     truck_number: document.getElementById('fuel-truck').value,
     date: document.getElementById('fuel-date').value,
+    time: document.getElementById('fuel-time').value,
     gallons: document.getElementById('fuel-gallons').value,
     price_per_gal: document.getElementById('fuel-price').value,
     total_cost: document.getElementById('fuel-total').value,
@@ -693,7 +866,8 @@ document.getElementById('fuel-save-btn').addEventListener('click', async () => {
     location: document.getElementById('fuel-location').value,
     state: document.getElementById('fuel-state').value,
     driver: document.getElementById('fuel-driver').value,
-    card_last4: document.getElementById('fuel-card').value
+    card_last4: document.getElementById('fuel-card').value,
+    payment_type: document.getElementById('fuel-payment-type').value
   };
   if (window._fuelPhotoDataUrl) {
     const upload = await postAction('uploadPhoto', { base64: window._fuelPhotoDataUrl, filename: `fuel-${payload.truck_number}-${payload.date}.jpg` });
@@ -713,19 +887,30 @@ document.getElementById('maint-save-btn').addEventListener('click', async () => 
     cost: document.getElementById('maint-cost').value,
     odometer: document.getElementById('maint-odometer').value,
     shop_vendor: document.getElementById('maint-vendor').value,
-    receipt_number: document.getElementById('maint-receipt-number').value
+    receipt_number: document.getElementById('maint-receipt-number').value,
+    payment_type: document.getElementById('maint-payment-type').value
   };
   if (window._maintPhotoDataUrl) {
     const upload = await postAction('uploadPhoto', { base64: window._maintPhotoDataUrl, filename: `maint-${payload.truck_number}-${payload.date}.jpg` });
     if (upload.url) payload.invoice_photo_url = upload.url;
   }
   const result = await postAction('saveMaintenanceLog', payload);
-  if (result.success) { alert('Maintenance entry saved.'); resetMaintForm(); loadData(); }
-  else alert('Save failed: ' + (result.error || 'unknown error'));
+  if (result.success) {
+    const parts = collectPartRows();
+    if (parts.length) {
+      await postAction('saveMaintenanceParts', { maintenance_log_id: result.id, parts });
+    }
+    alert('Maintenance entry saved.');
+    resetMaintForm();
+    loadData();
+  } else {
+    alert('Save failed: ' + (result.error || 'unknown error'));
+  }
 });
 
 function resetFuelForm() {
-  ['fuel-gallons','fuel-price','fuel-total','fuel-odometer','fuel-location','fuel-driver','fuel-card'].forEach(id => document.getElementById(id).value = '');
+  ['fuel-gallons','fuel-price','fuel-total','fuel-odometer','fuel-location','fuel-driver','fuel-card','fuel-time'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fuel-payment-type').value = '';
   document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('fuel-photo-preview').style.display = 'none';
   document.getElementById('fuel-photo-capture').style.display = 'block';
@@ -737,13 +922,43 @@ function resetFuelForm() {
 }
 function resetMaintForm() {
   ['maint-description','maint-cost','maint-odometer','maint-vendor','maint-receipt-number'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('maint-payment-type').value = '';
   document.getElementById('maint-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('maint-photo-preview').style.display = 'none';
   document.getElementById('maint-photo-capture').style.display = 'block';
   document.getElementById('maint-scan-status').style.display = 'none';
   document.getElementById('maint-photo-input').value = '';
   window._maintPhotoDataUrl = null;
+  clearPartRows();
 }
+
+// ---- Maintenance parts / line items — repeatable rows so a multi-line shop
+// invoice can be captured in full, not squeezed into one description field.
+// ----
+function addPartRow(partNumber, description, cost) {
+  const list = document.getElementById('maint-parts-list');
+  const row = document.createElement('div');
+  row.className = 'part-row';
+  row.innerHTML = `
+    <input type="text" class="part-number" placeholder="Part #" value="${escapeHtml(partNumber || '')}">
+    <input type="text" class="part-description" placeholder="Description" value="${escapeHtml(description || '')}">
+    <input type="number" step="0.01" class="part-cost" placeholder="Cost" value="${cost != null ? cost : ''}">
+    <button type="button" class="part-remove-btn" title="Remove">✕</button>
+  `;
+  row.querySelector('.part-remove-btn').addEventListener('click', () => row.remove());
+  list.appendChild(row);
+}
+function clearPartRows() {
+  document.getElementById('maint-parts-list').innerHTML = '';
+}
+function collectPartRows() {
+  return [...document.querySelectorAll('#maint-parts-list .part-row')].map(row => ({
+    part_number: row.querySelector('.part-number').value.trim(),
+    description: row.querySelector('.part-description').value.trim(),
+    cost: parseFloat(row.querySelector('.part-cost').value) || 0
+  })).filter(p => p.description || p.part_number);
+}
+document.getElementById('maint-add-part-btn').addEventListener('click', () => addPartRow());
 
 // ---- Dashboard ----
 function renderDashboard() {
@@ -756,6 +971,17 @@ function renderDashboard() {
     <div class="metric"><div class="metric-label">Overdue</div><div class="metric-value red">${redCount}</div></div>
     <div class="metric"><div class="metric-label">Due Soon</div><div class="metric-value" style="color:var(--amber);">${amberCount}</div></div>
   `;
+
+  const paymentFleet = (STATE.paymentBreakdown && STATE.paymentBreakdown.fleet) || [];
+  const payCard = document.getElementById('dash-payment-card');
+  if (!paymentFleet.length) {
+    payCard.style.display = 'none';
+  } else {
+    payCard.style.display = '';
+    document.getElementById('dash-payment-breakdown').innerHTML = paymentFleet.map(p => `
+      <div class="metric"><div class="metric-label">${escapeHtml(p.payment_type)}</div><div class="metric-value">$${p.total.toFixed(2)}</div></div>
+    `).join('');
+  }
 
   document.getElementById('dash-trucks').innerHTML = dash.map(t => `
     <div class="card">
@@ -869,6 +1095,11 @@ function renderReports() {
       <td><strong>$${(c.fuel + c.maint).toFixed(2)}</strong></td>
     </tr>
   `).join('');
+
+  const paymentRows = (STATE.paymentBreakdown && STATE.paymentBreakdown.fleet) || [];
+  document.querySelector('#reports-payment-table tbody').innerHTML = paymentRows.map(p => `
+    <tr><td>${escapeHtml(p.payment_type)}</td><td>$${p.total.toFixed(2)}</td></tr>
+  `).join('') || '<tr><td colspan="2" style="color:var(--text3);">No entries yet.</td></tr>';
 }
 
 document.getElementById('reports-export-btn').addEventListener('click', () => {
@@ -908,6 +1139,100 @@ document.getElementById('contact-add-btn').addEventListener('click', async () =>
   if (result.success) {
     document.getElementById('contact-name').value = '';
     document.getElementById('contact-phone').value = '';
+    loadData();
+  } else {
+    alert('Save failed: ' + (result.error || 'unknown error'));
+  }
+});
+
+// ---- Vendor/Shop Contacts (Contacts tab) — separate from the Text Alert
+// numbers above; this is the "who do I call for X" directory. ----
+function renderVendorContacts() {
+  const list = document.getElementById('vendor-contacts-list');
+  const contacts = STATE.contacts || [];
+  if (!contacts.length) {
+    list.innerHTML = '<div style="font-size:13px;color:var(--text3);">No contacts saved yet.</div>';
+    return;
+  }
+  list.innerHTML = [...contacts].sort((a, b) => a.company_name.localeCompare(b.company_name)).map(c => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;align-items:start;justify-content:space-between;gap:10px;">
+      <div>
+        <div style="font-size:14px;font-weight:600;">${escapeHtml(c.company_name)}</div>
+        <div style="font-size:12px;color:var(--text2);">${escapeHtml(c.contact_name || '')}${c.contact_name ? ' · ' : ''}${escapeHtml(c.phone || '')}${c.email ? ' · ' + escapeHtml(c.email) : ''}</div>
+        ${c.services_performed ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(c.services_performed)}</div>` : ''}
+        ${c.notes ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(c.notes)}</div>` : ''}
+      </div>
+      <button class="btn btn-sm btn-red" data-vendor-id="${c.id}">Remove</button>
+    </div>
+  `).join('');
+  list.querySelectorAll('[data-vendor-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await postAction('deleteContact', { id: btn.dataset.vendorId });
+      loadData();
+    });
+  });
+}
+
+document.getElementById('vendor-save-btn').addEventListener('click', async () => {
+  const company_name = document.getElementById('vendor-company').value.trim();
+  if (!company_name) { alert('Company name is required.'); return; }
+  const payload = {
+    company_name,
+    contact_name: document.getElementById('vendor-contact-name').value.trim(),
+    phone: document.getElementById('vendor-phone').value.trim(),
+    email: document.getElementById('vendor-email').value.trim(),
+    services_performed: document.getElementById('vendor-services').value.trim(),
+    notes: document.getElementById('vendor-notes').value.trim()
+  };
+  const result = await postAction('saveContact', payload);
+  if (result.success) {
+    ['vendor-company','vendor-contact-name','vendor-phone','vendor-email','vendor-services','vendor-notes'].forEach(id => document.getElementById(id).value = '');
+    loadData();
+  } else {
+    alert('Save failed: ' + (result.error || 'unknown error'));
+  }
+});
+
+// ---- Citations ----
+function renderCitations() {
+  const list = document.getElementById('citations-list');
+  const rows = STATE.citations || [];
+  if (!rows.length) { list.innerHTML = '<div style="font-size:13px;color:var(--text3);">No citations logged.</div>'; return; }
+  const sorted = [...rows].sort((a, b) => new Date(b.date) - new Date(a.date));
+  list.innerHTML = `<div class="swipe-hint">← swipe to see more →</div><div class="table-wrap"><table><thead><tr><th>Truck</th><th>Driver</th><th>Date</th><th>County</th><th>Violation</th><th>Fine</th><th>Status</th><th></th></tr></thead><tbody>${
+    sorted.map(c => `<tr>
+      <td>${escapeHtml(c.truck_number)}</td><td>${escapeHtml(c.driver || '')}</td><td>${escapeHtml(c.date || '')}</td>
+      <td>${escapeHtml(c.county || '')}</td><td>${escapeHtml(c.violation || '')}</td><td>$${c.fine_amount.toFixed(2)}</td>
+      <td>${c.action_complete ? '<span class="dot green"></span> Complete' : '<span class="dot amber"></span> Open'}</td>
+      <td><button class="btn btn-sm btn-red" data-citation-id="${c.id}">✕</button></td>
+    </tr>`).join('')
+  }</tbody></table></div>`;
+  list.querySelectorAll('[data-citation-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await postAction('deleteCitation', { id: btn.dataset.citationId });
+      loadData();
+    });
+  });
+}
+
+document.getElementById('citation-save-btn').addEventListener('click', async () => {
+  const truck_number = document.getElementById('citation-truck').value;
+  if (!truck_number) { alert('Truck is required.'); return; }
+  const payload = {
+    truck_number,
+    driver: document.getElementById('citation-driver').value.trim(),
+    date: document.getElementById('citation-date').value,
+    county: document.getElementById('citation-county').value.trim(),
+    violation: document.getElementById('citation-violation').value.trim(),
+    fine_amount: document.getElementById('citation-fine').value,
+    action_complete: document.getElementById('citation-complete').checked,
+    notes: document.getElementById('citation-notes').value.trim()
+  };
+  const result = await postAction('saveCitation', payload);
+  if (result.success) {
+    ['citation-driver','citation-county','citation-violation','citation-fine','citation-notes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('citation-complete').checked = false;
+    document.getElementById('citation-date').value = new Date().toISOString().slice(0,10);
     loadData();
   } else {
     alert('Save failed: ' + (result.error || 'unknown error'));
