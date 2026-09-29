@@ -42,6 +42,10 @@ body{font-family:'Barlow',sans-serif;background:var(--bg);color:var(--text);min-
 .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--green);}
 .sync-dot.busy{background:var(--amber);animation:blink 1s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.loading-overlay{position:fixed;inset:0;background:rgba(8,10,20,0.6);backdrop-filter:blur(1px);display:none;align-items:center;justify-content:center;z-index:9999;}
+.loading-overlay.show{display:flex;}
+.loading-spinner{width:46px;height:46px;border-radius:50%;border:4px solid rgba(255,255,255,0.18);border-top-color:var(--accent);animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
 .container{max-width:1100px;margin:0 auto;padding:24px 20px;}
 .tabs{display:flex;gap:2px;background:var(--surface);border-radius:var(--radius);padding:4px;margin-bottom:20px;border:1px solid var(--border);flex-wrap:wrap;}
 .tab{flex:1;padding:8px;text-align:center;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-radius:7px;border:none;background:none;transition:all .15s;white-space:nowrap;}
@@ -127,6 +131,8 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 </head>
 <body>
 
+<div id="loading-overlay" class="loading-overlay"><div class="loading-spinner"></div></div>
+
 <div class="nav">
   <div class="nav-brand">
     <img id="ea-logo" class="nav-logo" style="background:none;" alt="EA">
@@ -155,6 +161,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     <button class="tab" data-panel="panel-ifta">IFTA</button>
     <button class="tab" data-panel="panel-contacts">Contacts</button>
     <button class="tab" data-panel="panel-citations">Citations</button>
+    <button class="tab" data-panel="panel-trucks">Trucks</button>
     <button class="tab" data-panel="panel-help">Help</button>
   </div>
 
@@ -547,6 +554,15 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     </div>
   </div>
 
+  <!-- ==================== TRUCKS (VIN) ==================== -->
+  <div id="panel-trucks" class="panel">
+    <div class="card">
+      <div class="card-title">Fleet — VIN Numbers</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Truck number, status and driver come from LoadTracker. VIN is managed here — save each one once and it's remembered for every future entry.</p>
+      <div id="trucks-vin-list"></div>
+    </div>
+  </div>
+
   <!-- ==================== HELP ==================== -->
   <div id="panel-help" class="panel">
     <div class="card">
@@ -667,6 +683,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 function setSyncing(isSyncing) {
   document.getElementById('sync-dot').classList.toggle('busy', isSyncing);
   document.getElementById('sync-label').textContent = isSyncing ? 'Syncing…' : 'Synced';
+  document.getElementById('loading-overlay').classList.toggle('show', isSyncing);
 }
 
 async function loadData() {
@@ -682,6 +699,7 @@ async function loadData() {
     renderCitations();
     renderIftaMileageList();
     renderIftaRatesList();
+    renderTrucksVinList();
   } catch (err) {
     console.error('Load failed', err);
   } finally {
@@ -1422,6 +1440,38 @@ document.getElementById('vendor-save-btn').addEventListener('click', async () =>
 });
 
 // ---- Citations ----
+// ---- Trucks / VIN ----
+function renderTrucksVinList() {
+  const list = document.getElementById('trucks-vin-list');
+  const trucks = STATE.trucks || [];
+  if (!trucks.length) {
+    list.innerHTML = '<div style="font-size:13px;color:var(--text3);">No trucks found — add trucks in LoadTracker first.</div>';
+    return;
+  }
+  list.innerHTML = trucks.map(t => `
+    <div class="field-row" style="align-items:flex-end;border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:14px;">
+      <div class="field-group" style="margin-bottom:0;">
+        <label class="field-label">${escapeHtml(t.truck_number)}${t.assigned_driver ? ' — ' + escapeHtml(t.assigned_driver) : ''}</label>
+        <input type="text" class="field-input truck-vin-input" data-truck="${escapeHtml(t.truck_number)}" value="${escapeHtml(t.vin || '')}" placeholder="17-character VIN">
+      </div>
+      <div class="field-group" style="margin-bottom:0;flex:0 0 auto;">
+        <button type="button" class="btn btn-sm truck-vin-save-btn" data-truck="${escapeHtml(t.truck_number)}">Save</button>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.truck-vin-save-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const truck = btn.getAttribute('data-truck');
+      const input = list.querySelector(`.truck-vin-input[data-truck="${CSS.escape(truck)}"]`);
+      const vin = input ? input.value.trim() : '';
+      const result = await postAction('saveTruckVin', { truck_number: truck, vin });
+      if (result.success) { loadData(); }
+      else alert('Save failed: ' + (result.error || 'unknown error'));
+    });
+  });
+}
+
 function renderCitations() {
   const list = document.getElementById('citations-list');
   const rows = STATE.citations || [];
