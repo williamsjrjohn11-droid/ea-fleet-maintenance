@@ -184,19 +184,27 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 
       <div class="field-row">
         <div class="field-group">
-          <label class="field-label">Truck</label>
-          <select id="fuel-truck" class="field-input"></select>
+          <label class="field-label">Driver</label>
+          <select id="fuel-driver-select" class="field-input"></select>
+          <input type="text" id="fuel-driver-other" class="field-input" placeholder="Driver name" style="display:none;margin-top:6px;">
         </div>
         <div class="field-group">
-          <label class="field-label">Date</label>
-          <input type="date" id="fuel-date" class="field-input">
+          <label class="field-label">Truck</label>
+          <select id="fuel-truck" class="field-input"></select>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px;">Auto-fills from Driver — change it here if they're running a different truck today.</div>
         </div>
       </div>
       <div class="field-row">
         <div class="field-group">
+          <label class="field-label">Date</label>
+          <input type="date" id="fuel-date" class="field-input">
+        </div>
+        <div class="field-group">
           <label class="field-label">Time</label>
           <input type="time" id="fuel-time" class="field-input">
         </div>
+      </div>
+      <div class="field-row">
         <div class="field-group">
           <label class="field-label">Payment Type</label>
           <select id="fuel-payment-type" class="field-input">
@@ -208,6 +216,10 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
             <option>Fleet Card</option>
           </select>
         </div>
+        <div class="field-group">
+          <label class="field-label">Card # (last 4 only)</label>
+          <input type="text" id="fuel-card" class="field-input" maxlength="4" inputmode="numeric" placeholder="1234">
+        </div>
       </div>
       <div class="field-row">
         <div class="field-group">
@@ -217,6 +229,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
         <div class="field-group">
           <label class="field-label">Price / Gal</label>
           <input type="number" step="0.001" id="fuel-price" class="field-input" placeholder="0.000">
+          <div id="fuel-price-estimate-hint" style="display:none;font-size:11px;color:var(--text3);margin-top:4px;"></div>
         </div>
       </div>
       <div class="field-row">
@@ -237,16 +250,6 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
         <div class="field-group">
           <label class="field-label">State</label>
           <select id="fuel-state" class="field-input"></select>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field-group">
-          <label class="field-label">Driver (optional)</label>
-          <input type="text" id="fuel-driver" class="field-input">
-        </div>
-        <div class="field-group">
-          <label class="field-label">Card # (last 4 only)</label>
-          <input type="text" id="fuel-card" class="field-input" maxlength="4" inputmode="numeric" placeholder="1234">
         </div>
       </div>
 
@@ -529,18 +532,20 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 
       <div class="field-row">
         <div class="field-group">
-          <label class="field-label">Truck</label>
-          <select id="citation-truck" class="field-input"></select>
+          <label class="field-label">Driver</label>
+          <select id="citation-driver-select" class="field-input"></select>
+          <input type="text" id="citation-driver-other" class="field-input" placeholder="Driver name" style="display:none;margin-top:6px;">
         </div>
         <div class="field-group">
-          <label class="field-label">Date</label>
-          <input type="date" id="citation-date" class="field-input">
+          <label class="field-label">Truck</label>
+          <select id="citation-truck" class="field-input"></select>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px;">Auto-fills from Driver — change it here if needed.</div>
         </div>
       </div>
       <div class="field-row">
         <div class="field-group">
-          <label class="field-label">Driver</label>
-          <input type="text" id="citation-driver" class="field-input">
+          <label class="field-label">Date</label>
+          <input type="date" id="citation-date" class="field-input">
         </div>
         <div class="field-group">
           <label class="field-label">County</label>
@@ -730,6 +735,7 @@ async function loadData() {
     const res = await fetch(API_URL);
     STATE = await res.json();
     populateTruckSelects();
+    populateDriverSelects();
     renderDashboard();
     renderReports();
     renderContacts();
@@ -746,15 +752,80 @@ async function loadData() {
 }
 
 function populateTruckSelects() {
+  const blank = '<option value="">— Select Truck —</option>';
   const opts = STATE.trucks
     .filter(t => t.status === 'Active')
     .map(t => `<option value="${t.truck_number}">${t.truck_number}${t.assigned_driver ? ' — ' + t.assigned_driver : ''}</option>`)
     .join('');
-  document.getElementById('fuel-truck').innerHTML = opts;
-  document.getElementById('maint-truck').innerHTML = opts;
-  document.getElementById('ifta-report-truck').innerHTML = opts;
-  document.getElementById('ifta-miles-truck').innerHTML = opts;
-  document.getElementById('citation-truck').innerHTML = opts;
+  document.getElementById('fuel-truck').innerHTML = blank + opts;
+  document.getElementById('maint-truck').innerHTML = blank + opts;
+  document.getElementById('ifta-report-truck').innerHTML = blank + opts;
+  document.getElementById('ifta-miles-truck').innerHTML = blank + opts;
+  document.getElementById('citation-truck').innerHTML = blank + opts;
+}
+
+// ---- Driver-first entry: pick a driver, their assigned truck auto-fills.
+// Truck stays overridable (a sub driving someone else's truck that day), and
+// an "Other" option covers anyone not yet assigned a truck in LoadTracker. ----
+let driverToTruck = {};
+function populateDriverSelects() {
+  driverToTruck = {};
+  const seen = new Set();
+  STATE.trucks.forEach(t => {
+    const name = (t.assigned_driver || '').trim();
+    if (name && !seen.has(name)) { seen.add(name); driverToTruck[name] = t.truck_number; }
+  });
+  const driverNames = Array.from(seen).sort();
+  const optsHtml = '<option value="">— Select Driver —</option>'
+    + driverNames.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')
+    + '<option value="__other__">Other (type name)</option>';
+
+  ['fuel-driver-select', 'citation-driver-select'].forEach(id => {
+    document.getElementById(id).innerHTML = optsHtml;
+  });
+}
+
+function wireDriverTruckLink(driverSelectId, otherInputId, truckSelectId) {
+  const driverSelect = document.getElementById(driverSelectId);
+  const otherInput = document.getElementById(otherInputId);
+  const truckSelect = document.getElementById(truckSelectId);
+  driverSelect.addEventListener('change', () => {
+    const val = driverSelect.value;
+    if (val === '__other__') {
+      otherInput.style.display = 'block';
+      otherInput.focus();
+    } else {
+      otherInput.style.display = 'none';
+      otherInput.value = '';
+      if (val && driverToTruck[val]) truckSelect.value = driverToTruck[val];
+    }
+  });
+}
+wireDriverTruckLink('fuel-driver-select', 'fuel-driver-other', 'fuel-truck');
+wireDriverTruckLink('citation-driver-select', 'citation-driver-other', 'citation-truck');
+
+function resolvedDriverValue(selectId, otherId) {
+  const select = document.getElementById(selectId);
+  if (select.value === '__other__') return document.getElementById(otherId).value.trim();
+  return select.value;
+}
+
+// Selects the closest-matching option for a driver name read off a scan —
+// exact match if the driver's already known, otherwise falls back to "Other".
+function setDriverSelectValue(selectId, otherId, name) {
+  const select = document.getElementById(selectId);
+  const otherInput = document.getElementById(otherId);
+  if (!name) return;
+  const match = Array.from(select.options).find(o => o.value.toLowerCase() === name.toLowerCase());
+  if (match) {
+    select.value = match.value;
+    otherInput.style.display = 'none';
+    otherInput.value = '';
+  } else {
+    select.value = '__other__';
+    otherInput.style.display = 'block';
+    otherInput.value = name;
+  }
 }
 
 // ---- Fuel: auto-calc works either direction (Gallons+Price -> Total, or
@@ -777,6 +848,83 @@ function recalcFuel() {
     gEl.value = (t / p).toFixed(3);
   }
 }
+
+// ---- Price/gal estimate — when a receipt doesn't print gallons OR
+// price/gal (e.g. a bare-total prepay slip), there's nothing to calculate
+// gallons from. This estimates a price/gal from your own recent fill-ups —
+// same state first, falling back to any state — weighted toward entries
+// closest to the date you're logging, so you at least get a ballpark gallons
+// figure instead of leaving it blank. Always just a suggestion, never
+// auto-filled without a tap. ----
+function fuelPriceEstimate_() {
+  const state = document.getElementById('fuel-state').value;
+  const dateStr = document.getElementById('fuel-date').value;
+  const targetDate = dateStr ? new Date(dateStr) : new Date();
+
+  const priced = (STATE.fuelLog || []).filter(f => (parseFloat(f.price_per_gal) || 0) > 0);
+  if (!priced.length) return null;
+
+  const scored = (list) => list.map(f => {
+    const days = Math.abs((new Date(f.date) - targetDate) / 86400000) || 0;
+    return { price: parseFloat(f.price_per_gal), weight: 1 / (1 + days) };
+  });
+
+  let pool = state ? priced.filter(f => (f.state || '').toUpperCase() === state.toUpperCase()) : [];
+  let label = state ? `recent fill-ups in ${state}` : '';
+  if (!pool.length) { pool = priced; label = 'all recent fill-ups'; }
+
+  const weighted = scored(pool);
+  const totalWeight = weighted.reduce((s, w) => s + w.weight, 0);
+  const avg = weighted.reduce((s, w) => s + w.price * w.weight, 0) / totalWeight;
+  return { price: avg, count: pool.length, label };
+}
+
+function renderFuelPriceHint_(price, text) {
+  const hint = document.getElementById('fuel-price-estimate-hint');
+  const priceEl = document.getElementById('fuel-price');
+  hint.style.display = 'block';
+  hint.innerHTML = `💡 ${text} — <a href="#" id="fuel-price-use-estimate" style="color:var(--accent);">use this</a>`;
+  document.getElementById('fuel-price-use-estimate').addEventListener('click', (e) => {
+    e.preventDefault();
+    priceEl.value = price.toFixed(3);
+    hint.style.display = 'none';
+    recalcFuel();
+  });
+}
+
+// Tries a real-world price from the EIA (government weekly diesel survey)
+// first, since that reflects the actual market instead of just our own thin
+// history — then quietly falls back to averaging the fleet's own fill-ups if
+// the EIA call errors out (no key set up yet, offline, no data for the
+// region/date). A request token guards against a slower, older call
+// overwriting a newer one if the driver changes state/date quickly.
+let fuelPriceEstimateToken_ = 0;
+async function updateFuelPriceEstimateHint() {
+  const hint = document.getElementById('fuel-price-estimate-hint');
+  const priceEl = document.getElementById('fuel-price');
+  if (priceEl.value) { hint.style.display = 'none'; return; } // don't nag once a price is set
+
+  const state = document.getElementById('fuel-state').value;
+  const dateStr = document.getElementById('fuel-date').value;
+  const myToken = ++fuelPriceEstimateToken_;
+
+  const eia = await postAction('getDieselPriceEstimate', { state, date: dateStr || null });
+  if (myToken !== fuelPriceEstimateToken_) return; // a newer call superseded this one
+  if (priceEl.value) { hint.style.display = 'none'; return; } // price got filled while we waited
+
+  if (eia && eia.success) {
+    const periodLabel = eia.period ? ` (week of ${eia.period})` : '';
+    renderFuelPriceHint_(eia.price, `EIA ${eia.region} diesel avg${periodLabel}: $${eia.price.toFixed(3)}/gal`);
+    return;
+  }
+
+  const est = fuelPriceEstimate_();
+  if (!est) { hint.style.display = 'none'; return; }
+  renderFuelPriceHint_(est.price, `Est. $${est.price.toFixed(3)}/gal (avg of ${est.count} ${est.label})`);
+}
+document.getElementById('fuel-state').addEventListener('change', updateFuelPriceEstimateHint);
+document.getElementById('fuel-date').addEventListener('change', updateFuelPriceEstimateHint);
+document.getElementById('fuel-price').addEventListener('input', updateFuelPriceEstimateHint);
 
 // ---- Photo capture: tap to pick a file, or drag-and-drop one onto the box.
 // After a file loads, it's sent to the AI receipt scanner, which fills in
@@ -946,6 +1094,7 @@ async function scanReceipt(dataUrl, kind, filename) {
     if (f.card_last4) document.getElementById('fuel-card').value = f.card_last4;
     if (f.payment_type && PAYMENT_OPTIONS.includes(f.payment_type)) document.getElementById('fuel-payment-type').value = f.payment_type;
     recalcFuel(); // fills gallons from total/price if the receipt didn't print gallons
+    updateFuelPriceEstimateHint(); // offers an estimated price/gal if the receipt had neither gallons nor price (e.g. a bare prepay total)
     if (statusEl) statusEl.textContent = f.gallons == null
       ? '✅ Read the receipt — gallons weren\'t printed on it (likely prepay), so it\'s calculated from Total ÷ Price. Double-check before saving.'
       : '✅ Read the receipt — double-check the numbers before saving.';
@@ -966,7 +1115,7 @@ async function scanReceipt(dataUrl, kind, filename) {
       : '✅ Read the invoice — double-check before saving.';
   } else if (kind === 'citation') {
     if (f.date) document.getElementById('citation-date').value = f.date;
-    if (f.driver) document.getElementById('citation-driver').value = f.driver;
+    if (f.driver) setDriverSelectValue('citation-driver-select', 'citation-driver-other', f.driver);
     if (f.county) document.getElementById('citation-county').value = f.county;
     if (f.violation) document.getElementById('citation-violation').value = f.violation;
     if (f.fine_amount != null) document.getElementById('citation-fine').value = f.fine_amount;
@@ -1028,8 +1177,10 @@ function withTimeout(promise, ms, timeoutMessage) {
 }
 
 document.getElementById('fuel-save-btn').addEventListener('click', async () => {
+  const truck_number = document.getElementById('fuel-truck').value;
+  if (!truck_number) { alert('Please select a driver or truck before saving.'); return; }
   const payload = {
-    truck_number: document.getElementById('fuel-truck').value,
+    truck_number,
     date: document.getElementById('fuel-date').value,
     time: document.getElementById('fuel-time').value,
     gallons: document.getElementById('fuel-gallons').value,
@@ -1038,7 +1189,7 @@ document.getElementById('fuel-save-btn').addEventListener('click', async () => {
     odometer: document.getElementById('fuel-odometer').value,
     location: document.getElementById('fuel-location').value,
     state: document.getElementById('fuel-state').value,
-    driver: document.getElementById('fuel-driver').value,
+    driver: resolvedDriverValue('fuel-driver-select', 'fuel-driver-other'),
     card_last4: document.getElementById('fuel-card').value,
     payment_type: document.getElementById('fuel-payment-type').value
   };
@@ -1052,8 +1203,10 @@ document.getElementById('fuel-save-btn').addEventListener('click', async () => {
 });
 
 document.getElementById('maint-save-btn').addEventListener('click', async () => {
+  const truck_number = document.getElementById('maint-truck').value;
+  if (!truck_number) { alert('Please select a truck before saving.'); return; }
   const payload = {
-    truck_number: document.getElementById('maint-truck').value,
+    truck_number,
     date: document.getElementById('maint-date').value,
     service_type: document.getElementById('maint-service-type').value,
     description: document.getElementById('maint-description').value,
@@ -1083,9 +1236,14 @@ document.getElementById('maint-save-btn').addEventListener('click', async () => 
 });
 
 function resetFuelForm() {
-  ['fuel-gallons','fuel-price','fuel-total','fuel-odometer','fuel-location','fuel-driver','fuel-card','fuel-time'].forEach(id => document.getElementById(id).value = '');
+  ['fuel-gallons','fuel-price','fuel-total','fuel-odometer','fuel-location','fuel-card','fuel-time'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('fuel-payment-type').value = '';
+  document.getElementById('fuel-driver-select').value = '';
+  document.getElementById('fuel-driver-other').value = '';
+  document.getElementById('fuel-driver-other').style.display = 'none';
+  document.getElementById('fuel-truck').value = '';
   document.getElementById('fuel-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('fuel-price-estimate-hint').style.display = 'none';
   removePhoto('fuel');
   totalManuallyEdited = false;
   gallonsManuallyEdited = false;
@@ -1590,7 +1748,7 @@ document.getElementById('citation-save-btn').addEventListener('click', async () 
   if (!truck_number) { alert('Truck is required.'); return; }
   const payload = {
     truck_number,
-    driver: document.getElementById('citation-driver').value.trim(),
+    driver: resolvedDriverValue('citation-driver-select', 'citation-driver-other'),
     date: document.getElementById('citation-date').value,
     county: document.getElementById('citation-county').value.trim(),
     violation: document.getElementById('citation-violation').value.trim(),
@@ -1604,7 +1762,11 @@ document.getElementById('citation-save-btn').addEventListener('click', async () 
   }
   const result = await postAction('saveCitation', payload);
   if (result.success) {
-    ['citation-driver','citation-county','citation-violation','citation-fine','citation-notes'].forEach(id => document.getElementById(id).value = '');
+    ['citation-county','citation-violation','citation-fine','citation-notes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('citation-driver-select').value = '';
+    document.getElementById('citation-driver-other').value = '';
+    document.getElementById('citation-driver-other').style.display = 'none';
+    document.getElementById('citation-truck').value = '';
     document.getElementById('citation-complete').checked = false;
     document.getElementById('citation-date').value = new Date().toISOString().slice(0,10);
     removePhoto('citation');
