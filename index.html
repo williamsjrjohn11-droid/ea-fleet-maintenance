@@ -314,16 +314,22 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
           <input type="text" id="maint-receipt-number" class="field-input">
         </div>
       </div>
-      <div class="field-group">
-        <label class="field-label">Payment Type</label>
-        <select id="maint-payment-type" class="field-input">
-          <option value="">—</option>
-          <option>Cash</option>
-          <option>Credit Card</option>
-          <option>Debit Card</option>
-          <option>Check</option>
-          <option>Fleet Card</option>
-        </select>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Payment Type</label>
+          <select id="maint-payment-type" class="field-input">
+            <option value="">—</option>
+            <option>Cash</option>
+            <option>Credit Card</option>
+            <option>Debit Card</option>
+            <option>Check</option>
+            <option>Fleet Card</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Card # (last 4 only)</label>
+          <input type="text" id="maint-card" class="field-input" maxlength="4" inputmode="numeric" placeholder="1234">
+        </div>
       </div>
 
       <div class="field-group" style="margin-top:8px;">
@@ -382,6 +388,15 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       <div class="table-wrap">
         <table id="reports-payment-table">
           <thead><tr><th>Payment Type</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Cost By Card (last 4)</div>
+      <div class="table-wrap">
+        <table id="reports-card-table">
+          <thead><tr><th>Card</th><th>Fuel</th><th>Maint.</th><th>Total</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -593,7 +608,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     <div class="card">
       <div class="card-title">Reports</div>
       <p style="font-size:14px;line-height:1.6;color:var(--text2);">
-        Fuel + maintenance cost totals per truck, added up from every entry you've logged. Excel export is planned but not built yet.
+        Fuel + maintenance cost totals per truck, plus breakdowns by payment type and by card, with a date-range filter. Tap <strong>Export to Excel</strong> for a full .xlsx workbook of everything shown, scoped to whatever range is selected.
       </p>
     </div>
     <div class="card">
@@ -621,6 +636,28 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       </div>
       <button class="btn btn-sm" id="contact-add-btn">Add Contact</button>
       <div id="contacts-list" style="margin-top:14px;"></div>
+    </div>
+    <div class="card" style="border:1px solid #7a2b2b;">
+      <div class="card-title" style="color:#ff6b6b;">⚠ Danger Zone — Clear Data</div>
+      <p style="font-size:13px;line-height:1.6;color:var(--text2);margin-bottom:14px;">
+        Permanently deletes every row (keeps the tab and its columns) from whichever boxes you check below — e.g. to wipe out test entries before loading real data. This cannot be undone from inside the app. The shared <strong>Trucks</strong> tab is never affected, since LoadTracker owns it.
+      </p>
+      <div id="danger-zone-checkboxes" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="FuelLog" class="danger-zone-cb"> Fuel Log entries</label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="MaintenanceLog" class="danger-zone-cb"> Maintenance Log entries</label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="MaintenanceParts" class="danger-zone-cb"> Maintenance Parts / line items</label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="Citations" class="danger-zone-cb"> Citations</label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="Contacts" class="danger-zone-cb"> Vendor Contacts</label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="AlertContacts" class="danger-zone-cb"> Text Alert numbers</label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="MaintenanceRules" class="danger-zone-cb"> Maintenance Rules (service intervals)</label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="IFTAMileage" class="danger-zone-cb"> IFTA Mileage entries</label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="IFTARates" class="danger-zone-cb"> IFTA Rate entries</label>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Type DELETE to confirm</label>
+        <input type="text" id="danger-zone-confirm" class="field-input" placeholder="DELETE">
+      </div>
+      <button type="button" class="btn btn-full" id="danger-zone-btn" style="background:#7a2b2b;color:#fff;border-color:#7a2b2b;" disabled>Clear Selected Data</button>
     </div>
   </div>
 
@@ -918,6 +955,7 @@ async function scanReceipt(dataUrl, kind, filename) {
     if (f.receipt_number) document.getElementById('maint-receipt-number').value = f.receipt_number;
     if (f.description) document.getElementById('maint-description').value = f.description;
     if (f.payment_type && PAYMENT_OPTIONS.includes(f.payment_type)) document.getElementById('maint-payment-type').value = f.payment_type;
+    if (f.card_last4) document.getElementById('maint-card').value = f.card_last4;
     if (Array.isArray(f.parts) && f.parts.length) {
       clearPartRows();
       f.parts.forEach(p => addPartRow(p.part_number, p.description, p.cost));
@@ -966,7 +1004,13 @@ async function postAction(action, payload) {
     try {
       return JSON.parse(text);
     } catch (parseErr) {
-      return { error: 'Server returned something unexpected — try again in a moment.' };
+      // Not valid JSON — Google sent back an HTML page instead of running the
+      // script (common causes: daily Apps Script quota hit, or the
+      // deployment's access got reset to "Only myself"). Surface a snippet
+      // of what actually came back so this is diagnosable instead of a
+      // generic dead end.
+      const snippet = (text || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+      return { error: 'Server returned something unexpected (HTTP ' + res.status + '): ' + (snippet || 'empty response') };
     }
   } catch (networkErr) {
     return { error: 'Could not reach the server — check your connection and try again.' };
@@ -1016,7 +1060,8 @@ document.getElementById('maint-save-btn').addEventListener('click', async () => 
     odometer: document.getElementById('maint-odometer').value,
     shop_vendor: document.getElementById('maint-vendor').value,
     receipt_number: document.getElementById('maint-receipt-number').value,
-    payment_type: document.getElementById('maint-payment-type').value
+    payment_type: document.getElementById('maint-payment-type').value,
+    card_last4: document.getElementById('maint-card').value
   };
   if (window._maintPhotoDataUrl) {
     const upload = await postAction('uploadPhoto', { base64: window._maintPhotoDataUrl, filename: `maint-${payload.truck_number}-${payload.date}.jpg` });
@@ -1045,7 +1090,7 @@ function resetFuelForm() {
   gallonsManuallyEdited = false;
 }
 function resetMaintForm() {
-  ['maint-description','maint-cost','maint-odometer','maint-vendor','maint-receipt-number'].forEach(id => document.getElementById(id).value = '');
+  ['maint-description','maint-cost','maint-odometer','maint-vendor','maint-receipt-number','maint-card'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('maint-payment-type').value = '';
   document.getElementById('maint-date').value = new Date().toISOString().slice(0,10);
   removePhoto('maintenance');
@@ -1233,6 +1278,21 @@ function reportsPaymentBreakdown_(fuelLog, maintenanceLog) {
   return Object.entries(totals).map(([payment_type, total]) => ({ payment_type, total }));
 }
 
+function reportsCardBreakdown_(fuelLog, maintenanceLog) {
+  const byCard = {};
+  fuelLog.forEach(f => {
+    const key = f.card_last4 ? '•••• ' + f.card_last4 : 'Unspecified';
+    if (!byCard[key]) byCard[key] = { fuel: 0, maint: 0 };
+    byCard[key].fuel += (Number(f.total_cost) || 0);
+  });
+  maintenanceLog.forEach(m => {
+    const key = m.card_last4 ? '•••• ' + m.card_last4 : 'Unspecified';
+    if (!byCard[key]) byCard[key] = { fuel: 0, maint: 0 };
+    byCard[key].maint += (Number(m.cost) || 0);
+  });
+  return Object.entries(byCard).map(([card, c]) => ({ card, fuel: c.fuel, maint: c.maint, total: c.fuel + c.maint }));
+}
+
 function renderReports() {
   const { fuelLog, maintenanceLog } = reportsFilteredData_();
 
@@ -1255,6 +1315,16 @@ function renderReports() {
   document.querySelector('#reports-payment-table tbody').innerHTML = paymentRows.map(p => `
     <tr><td>${escapeHtml(p.payment_type)}</td><td>$${p.total.toFixed(2)}</td></tr>
   `).join('') || '<tr><td colspan="2" style="color:var(--text3);">No entries in this range.</td></tr>';
+
+  const cardRows = reportsCardBreakdown_(fuelLog, maintenanceLog);
+  document.querySelector('#reports-card-table tbody').innerHTML = cardRows.map(c => `
+    <tr>
+      <td>${escapeHtml(c.card)}</td>
+      <td>$${c.fuel.toFixed(2)}</td>
+      <td>$${c.maint.toFixed(2)}</td>
+      <td><strong>$${c.total.toFixed(2)}</strong></td>
+    </tr>
+  `).join('') || '<tr><td colspan="4" style="color:var(--text3);">No entries in this range.</td></tr>';
 }
 
 document.getElementById('reports-from').addEventListener('change', renderReports);
@@ -1321,7 +1391,11 @@ document.getElementById('reports-export-btn').addEventListener('click', () => {
       Date: m.date, Truck: m.truck_number, 'Service Type': m.service_type,
       Description: m.description || '', 'Receipt #': m.receipt_number || '',
       Cost: m.cost, 'Shop/Vendor': m.shop_vendor || '', Odometer: m.odometer,
-      'Payment Type': m.payment_type || ''
+      'Payment Type': m.payment_type || '', 'Card Last4': m.card_last4 || ''
+    }));
+
+    const cardRows = reportsCardBreakdown_(fuelLog, maintenanceLog).map(c => ({
+      Card: c.card, Fuel: Number(c.fuel.toFixed(2)), Maintenance: Number(c.maint.toFixed(2)), Total: Number(c.total.toFixed(2))
     }));
 
     const partsRows = (STATE.maintenanceParts || [])
@@ -1337,6 +1411,7 @@ document.getElementById('reports-export-btn').addEventListener('click', () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(costPerTruckRows), 'Cost Per Truck');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(paymentRows), 'By Payment Type');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cardRows), 'By Card');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fuelRows), 'Fuel Log');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(maintRows), 'Maintenance Log');
     if (partsRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(partsRows), 'Parts & Line Items');
@@ -1640,6 +1715,36 @@ document.getElementById('ifta-run-btn').addEventListener('click', async () => {
       <div style="font-size:12px;color:var(--text2);margin-top:2px;">Positive = owed across all states combined. Negative = net credit. Check each state individually — some may owe while others credit.</div>
     </div>
   `;
+});
+
+// ---- Danger Zone: clear data ----
+function updateDangerZoneBtn() {
+  const confirmed = document.getElementById('danger-zone-confirm').value === 'DELETE';
+  const anyChecked = Array.from(document.querySelectorAll('.danger-zone-cb')).some(cb => cb.checked);
+  document.getElementById('danger-zone-btn').disabled = !(confirmed && anyChecked);
+}
+document.getElementById('danger-zone-confirm').addEventListener('input', updateDangerZoneBtn);
+document.querySelectorAll('.danger-zone-cb').forEach(cb => cb.addEventListener('change', updateDangerZoneBtn));
+
+document.getElementById('danger-zone-btn').addEventListener('click', async () => {
+  const tabs = Array.from(document.querySelectorAll('.danger-zone-cb')).filter(cb => cb.checked).map(cb => cb.value);
+  if (!tabs.length) return;
+  const labels = Array.from(document.querySelectorAll('.danger-zone-cb'))
+    .filter(cb => cb.checked)
+    .map(cb => cb.parentElement.textContent.trim());
+  const reallyConfirmed = confirm('This will permanently delete all rows from:\n\n' + labels.join('\n') + '\n\nThis cannot be undone. Continue?');
+  if (!reallyConfirmed) return;
+
+  const result = await postAction('clearTabData', { tabs });
+  if (result.success) {
+    alert('Cleared: ' + (result.cleared || []).join(', ') || 'Nothing to clear.');
+    document.querySelectorAll('.danger-zone-cb').forEach(cb => cb.checked = false);
+    document.getElementById('danger-zone-confirm').value = '';
+    updateDangerZoneBtn();
+    loadData();
+  } else {
+    alert('Clear failed: ' + (result.error || 'unknown error'));
+  }
 });
 
 loadData();
