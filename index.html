@@ -109,6 +109,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 .receipt-row-detail{font-size:12px;color:var(--text2);margin-top:2px;}
 .receipt-thumb{width:54px;height:54px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--border2);flex-shrink:0;display:block;}
 .receipt-thumb-empty{width:54px;height:54px;border-radius:var(--radius);border:1px dashed var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text3);text-align:center;}
+.attach-photo-cell{cursor:pointer;border-color:var(--accent);color:var(--accent);}
 @media(max-width:600px){
   .nav-title{font-size:15px;}
   .metrics{grid-template-columns:1fr 1fr;}
@@ -1457,11 +1458,59 @@ function driveFileId_(url) {
   return m ? m[1] : null;
 }
 
-function truckDetailPhotoCell_(url) {
-  if (!url) return `<div class="receipt-thumb-empty">No photo</div>`;
+// kind/entryId are only used for the "no photo" case, to offer attaching
+// one after the fact — currently wired up for maintenance invoices, since
+// that's where the PDF-upload bug (fixed server-side now) silently lost
+// photos for every record saved before the fix. The original scan wasn't
+// actually saved anywhere, so there's nothing to recover automatically;
+// this lets whoever still has the photo (or the paper copy) attach it now.
+function truckDetailPhotoCell_(url, kind, entryId) {
+  if (!url) {
+    if (kind === 'maintenance' && entryId) {
+      return `<label class="receipt-thumb-empty attach-photo-cell">📎 Attach<input type="file" accept="image/*,application/pdf" style="display:none;" data-attach-maint-input="${escapeHtml(entryId)}"></label>`;
+    }
+    return `<div class="receipt-thumb-empty">No photo</div>`;
+  }
   const id = driveFileId_(url);
   const thumbSrc = id ? `https://drive.google.com/thumbnail?id=${id}&sz=w200` : url;
   return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(thumbSrc)}" loading="lazy" class="receipt-thumb" alt="Receipt photo"></a>`;
+}
+
+// Attaches a photo to an existing maintenance record after the fact (see
+// truckDetailPhotoCell_ above for why this exists). Uploads the file with
+// the same uploadPhoto() the live scan flow uses, then re-saves the
+// maintenance entry with its new invoice_photo_url — saveMaintenanceLog
+// upserts by id, so this updates the existing row rather than duplicating it.
+async function attachMaintenancePhotoInline_(entryId, file) {
+  if (!file) return;
+  const cell = document.querySelector(`[data-attach-maint-input="${CSS.escape(entryId)}"]`)?.closest('.attach-photo-cell');
+  if (cell) { cell.textContent = 'Uploading…'; cell.style.pointerEvents = 'none'; }
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    let finalDataUrl = reader.result;
+    if (file.type !== 'application/pdf') {
+      finalDataUrl = await compressImageDataUrl(reader.result, 1600, 0.85);
+    }
+    const entry = (STATE.maintenanceLog || []).find(m => m.id === entryId);
+    if (!entry) { alert('Could not find that maintenance record anymore — try closing and reopening this truck.'); renderTruckDetailBody_(); return; }
+
+    const upload = await postAction('uploadPhoto', { base64: finalDataUrl, filename: file.name || `maint-${entryId}.jpg` });
+    if (!upload.success) {
+      alert('Could not upload that photo: ' + (upload.error || 'unknown error'));
+      renderTruckDetailBody_();
+      return;
+    }
+    const saveResult = await postAction('saveMaintenanceLog', { ...entry, invoice_photo_url: upload.url });
+    if (!saveResult.success) {
+      alert('Photo uploaded but could not attach it to the record: ' + (saveResult.error || 'unknown error'));
+      renderTruckDetailBody_();
+      return;
+    }
+    entry.invoice_photo_url = upload.url; // same object reference as in truckDetailData_.maint
+    renderTruckDetailBody_();
+  };
+  reader.readAsDataURL(file);
 }
 
 function openTruckDetail(truckNumber) {
@@ -1518,7 +1567,7 @@ function renderTruckDetailBody_() {
         <div class="receipt-row-date">${escapeHtml(m.date || '')} · ${escapeHtml(m.service_type || '')}</div>
         <div class="receipt-row-detail">${escapeHtml(m.shop_vendor || 'No shop listed')} · $${(parseFloat(m.cost) || 0).toFixed(2)}${m.description ? ' · ' + escapeHtml(m.description) : ''}</div>
       </div>
-      ${truckDetailPhotoCell_(m.invoice_photo_url)}
+      ${truckDetailPhotoCell_(m.invoice_photo_url, 'maintenance', m.id)}
     </div>
   `).join('') || '<div class="empty" style="padding:16px;">No maintenance entries for this truck yet.</div>';
 
@@ -1549,6 +1598,12 @@ function renderTruckDetailBody_() {
 document.getElementById('truck-detail-body').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-truck-filter]');
   if (btn) setTruckDetailFilter_(btn.dataset.truckFilter);
+});
+document.getElementById('truck-detail-body').addEventListener('change', (e) => {
+  const input = e.target.closest('[data-attach-maint-input]');
+  if (input && input.files && input.files[0]) {
+    attachMaintenancePhotoInline_(input.dataset.attachMaintInput, input.files[0]);
+  }
 });
 
 // ---- Alert banner — pulsing bar across the top when anything is due soon or overdue ----
