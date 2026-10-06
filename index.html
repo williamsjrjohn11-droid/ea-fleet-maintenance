@@ -91,6 +91,24 @@ textarea,input[type=text],input[type=password]{width:100%;background:var(--surfa
 textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 .empty{text-align:center;padding:40px 20px;color:var(--text3);font-size:14px;}
 .empty-icon{font-size:36px;display:block;margin-bottom:10px;}
+.truck-card-clickable{cursor:pointer;transition:border-color .15s;}
+.truck-card-clickable:hover{border-color:var(--accent);}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:200;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto;}
+.modal-overlay.open{display:flex;}
+.modal-box{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-lg);max-width:720px;width:100%;margin-top:20px;}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);border-radius:var(--radius-lg) var(--radius-lg) 0 0;}
+.modal-close-btn{background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;line-height:1;padding:4px 8px;}
+.modal-close-btn:hover{color:var(--text);}
+.modal-body{padding:16px 20px 24px;}
+.modal-section-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:20px 0 10px;}
+.modal-section-title:first-child{margin-top:0;}
+.receipt-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
+.receipt-row:last-child{border-bottom:none;}
+.receipt-row-main{flex:1;min-width:0;}
+.receipt-row-date{font-size:13px;font-weight:600;color:var(--text);}
+.receipt-row-detail{font-size:12px;color:var(--text2);margin-top:2px;}
+.receipt-thumb{width:54px;height:54px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--border2);flex-shrink:0;display:block;}
+.receipt-thumb-empty{width:54px;height:54px;border-radius:var(--radius);border:1px dashed var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text3);text-align:center;}
 @media(max-width:600px){
   .nav-title{font-size:15px;}
   .metrics{grid-template-columns:1fr 1fr;}
@@ -354,6 +372,21 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       <div class="metrics" id="dash-payment-breakdown"></div>
     </div>
     <div id="dash-trucks"></div>
+  </div>
+
+  <!-- ==================== TRUCK DETAIL MODAL ====================
+       Opens from a Dashboard truck card — every scanned fuel receipt,
+       maintenance invoice, and citation photo for that one truck, newest
+       first, so nothing you've scanned in is ever just sitting unseen in
+       the Sheet. -->
+  <div id="truck-detail-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <div class="card-title" id="truck-detail-title" style="margin-bottom:0;">Truck</div>
+        <button class="modal-close-btn" id="truck-detail-close-btn" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="truck-detail-body"></div>
+    </div>
   </div>
 
   <!-- ==================== REPORTS ==================== -->
@@ -1179,6 +1212,8 @@ function withTimeout(promise, ms, timeoutMessage) {
 document.getElementById('fuel-save-btn').addEventListener('click', async () => {
   const truck_number = document.getElementById('fuel-truck').value;
   if (!truck_number) { alert('Please select a driver or truck before saving.'); return; }
+  const driver = resolvedDriverValue('fuel-driver-select', 'fuel-driver-other');
+  if (!driver) { alert('Please select a driver before saving.'); return; }
   const payload = {
     truck_number,
     date: document.getElementById('fuel-date').value,
@@ -1189,7 +1224,7 @@ document.getElementById('fuel-save-btn').addEventListener('click', async () => {
     odometer: document.getElementById('fuel-odometer').value,
     location: document.getElementById('fuel-location').value,
     state: document.getElementById('fuel-state').value,
-    driver: resolvedDriverValue('fuel-driver-select', 'fuel-driver-other'),
+    driver,
     card_last4: document.getElementById('fuel-card').value,
     payment_type: document.getElementById('fuel-payment-type').value
   };
@@ -1308,11 +1343,12 @@ function renderDashboard() {
   }
 
   document.getElementById('dash-trucks').innerHTML = dash.map(t => `
-    <div class="card">
+    <div class="card truck-card-clickable" data-truck="${escapeHtml(t.truck_number)}">
       <div class="truck-card-head">
         <div class="truck-num">${t.truck_number}</div>
         <div style="font-size:12px;color:var(--text2);">${t.current_odometer ? t.current_odometer.toLocaleString() + ' mi' : '—'} · last fuel ${t.last_fuel_date || '—'}</div>
       </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px;">Tap to view scanned receipts &amp; invoices</div>
       ${t.upcoming_maintenance.map(m => `
         <div class="due-row">
           <div style="display:flex;align-items:center;gap:10px;"><span class="dot ${m.status}"></span>${m.service_type}</div>
@@ -1326,6 +1362,78 @@ function renderDashboard() {
   `).join('') || '<div class="card">No trucks found — check the Trucks tab in the shared Sheet.</div>';
 
   renderAlertBanner(dash);
+}
+
+// ---- Truck detail modal — every scanned fuel receipt, maintenance invoice,
+// and citation photo for one truck, newest first. Opened by tapping a
+// Dashboard truck card; this is the only place in the app that surfaces
+// what's actually been scanned in, beyond the raw Sheet. ----
+document.getElementById('dash-trucks').addEventListener('click', (e) => {
+  const card = e.target.closest('.truck-card-clickable');
+  if (card) openTruckDetail(card.dataset.truck);
+});
+document.getElementById('truck-detail-close-btn').addEventListener('click', closeTruckDetail);
+document.getElementById('truck-detail-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'truck-detail-modal') closeTruckDetail(); // click on the backdrop
+});
+
+function closeTruckDetail() {
+  document.getElementById('truck-detail-modal').classList.remove('open');
+}
+
+function openTruckDetail(truckNumber) {
+  const fuel = (STATE.fuelLog || []).filter(f => f.truck_number === truckNumber)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  const maint = (STATE.maintenanceLog || []).filter(m => m.truck_number === truckNumber)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  const cites = (STATE.citations || []).filter(c => c.truck_number === truckNumber)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  document.getElementById('truck-detail-title').textContent = truckNumber;
+
+  const photoCell = (url) => url
+    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" loading="lazy" class="receipt-thumb" alt="Receipt photo"></a>`
+    : `<div class="receipt-thumb-empty">No photo</div>`;
+
+  const fuelRows = fuel.map(f => `
+    <div class="receipt-row">
+      <div class="receipt-row-main">
+        <div class="receipt-row-date">${escapeHtml(f.date || '')}${f.time ? ' · ' + escapeHtml(f.time) : ''}</div>
+        <div class="receipt-row-detail">${escapeHtml(f.driver || 'No driver')} · ${f.gallons ? f.gallons + ' gal · ' : ''}$${(parseFloat(f.total_cost) || 0).toFixed(2)}${f.location ? ' · ' + escapeHtml(f.location) : ''}</div>
+      </div>
+      ${photoCell(f.receipt_photo_url)}
+    </div>
+  `).join('') || '<div class="empty" style="padding:16px;">No fuel entries for this truck yet.</div>';
+
+  const maintRows = maint.map(m => `
+    <div class="receipt-row">
+      <div class="receipt-row-main">
+        <div class="receipt-row-date">${escapeHtml(m.date || '')} · ${escapeHtml(m.service_type || '')}</div>
+        <div class="receipt-row-detail">${escapeHtml(m.shop_vendor || 'No shop listed')} · $${(parseFloat(m.cost) || 0).toFixed(2)}${m.description ? ' · ' + escapeHtml(m.description) : ''}</div>
+      </div>
+      ${photoCell(m.invoice_photo_url)}
+    </div>
+  `).join('') || '<div class="empty" style="padding:16px;">No maintenance entries for this truck yet.</div>';
+
+  const citeRows = cites.map(c => `
+    <div class="receipt-row">
+      <div class="receipt-row-main">
+        <div class="receipt-row-date">${escapeHtml(c.date || '')}</div>
+        <div class="receipt-row-detail">${escapeHtml(c.driver || 'No driver')} · ${escapeHtml(c.violation || '')}${c.fine_amount ? ' · $' + parseFloat(c.fine_amount).toFixed(2) : ''}</div>
+      </div>
+      ${photoCell(c.citation_photo_url)}
+    </div>
+  `).join('');
+
+  document.getElementById('truck-detail-body').innerHTML = `
+    <div class="modal-section-title">Fuel Receipts (${fuel.length})</div>
+    ${fuelRows}
+    <div class="modal-section-title">Maintenance Invoices (${maint.length})</div>
+    ${maintRows}
+    ${cites.length ? `<div class="modal-section-title">Citations (${cites.length})</div>${citeRows}` : ''}
+  `;
+
+  document.getElementById('truck-detail-modal').classList.add('open');
 }
 
 // ---- Alert banner — pulsing bar across the top when anything is due soon or overdue ----
@@ -1746,9 +1854,11 @@ function renderCitations() {
 document.getElementById('citation-save-btn').addEventListener('click', async () => {
   const truck_number = document.getElementById('citation-truck').value;
   if (!truck_number) { alert('Truck is required.'); return; }
+  const driver = resolvedDriverValue('citation-driver-select', 'citation-driver-other');
+  if (!driver) { alert('Please select a driver before saving.'); return; }
   const payload = {
     truck_number,
-    driver: resolvedDriverValue('citation-driver-select', 'citation-driver-other'),
+    driver,
     date: document.getElementById('citation-date').value,
     county: document.getElementById('citation-county').value.trim(),
     violation: document.getElementById('citation-violation').value.trim(),
