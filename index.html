@@ -1391,6 +1391,17 @@ function closeTruckDetail() {
   document.getElementById('truck-detail-modal').classList.remove('open');
 }
 
+// Holds the currently-open truck's data + which filter chip is active, so
+// switching chips just re-renders the body instead of re-opening the modal.
+let truckDetailData_ = null;
+let truckDetailFilter_ = 'all';
+
+function truckDetailPhotoCell_(url) {
+  return url
+    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" loading="lazy" class="receipt-thumb" alt="Receipt photo"></a>`
+    : `<div class="receipt-thumb-empty">No photo</div>`;
+}
+
 function openTruckDetail(truckNumber) {
   const fuel = (STATE.fuelLog || []).filter(f => f.truck_number === truckNumber)
     .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -1399,11 +1410,35 @@ function openTruckDetail(truckNumber) {
   const cites = (STATE.citations || []).filter(c => c.truck_number === truckNumber)
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  document.getElementById('truck-detail-title').textContent = truckNumber;
+  truckDetailData_ = { truckNumber, fuel, maint, cites };
+  truckDetailFilter_ = 'all';
 
-  const photoCell = (url) => url
-    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" loading="lazy" class="receipt-thumb" alt="Receipt photo"></a>`
-    : `<div class="receipt-thumb-empty">No photo</div>`;
+  document.getElementById('truck-detail-title').textContent = truckNumber;
+  renderTruckDetailBody_();
+  document.getElementById('truck-detail-modal').classList.add('open');
+}
+
+function setTruckDetailFilter_(filter) {
+  truckDetailFilter_ = filter;
+  renderTruckDetailBody_();
+}
+
+function renderTruckDetailBody_() {
+  if (!truckDetailData_) return;
+  const { fuel, maint, cites } = truckDetailData_;
+  const filter = truckDetailFilter_;
+
+  const chip = (key, label, count) => `
+    <button type="button" class="chip ${filter === key ? 'active' : ''}" data-truck-filter="${key}">${label} (${count})</button>
+  `;
+  const chipsHtml = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+      ${chip('all', 'All', fuel.length + maint.length + cites.length)}
+      ${chip('fuel', 'Fuel Receipts', fuel.length)}
+      ${chip('maint', 'Maintenance', maint.length)}
+      ${cites.length ? chip('cites', 'Citations', cites.length) : ''}
+    </div>
+  `;
 
   const fuelRows = fuel.map(f => `
     <div class="receipt-row">
@@ -1411,7 +1446,7 @@ function openTruckDetail(truckNumber) {
         <div class="receipt-row-date">${escapeHtml(f.date || '')}${f.time ? ' · ' + escapeHtml(to12Hour_(f.time)) : ''}</div>
         <div class="receipt-row-detail">${escapeHtml(f.driver || 'No driver')} · ${f.gallons ? f.gallons + ' gal · ' : ''}$${(parseFloat(f.total_cost) || 0).toFixed(2)}${f.location ? ' · ' + escapeHtml(f.location) : ''}</div>
       </div>
-      ${photoCell(f.receipt_photo_url)}
+      ${truckDetailPhotoCell_(f.receipt_photo_url)}
     </div>
   `).join('') || '<div class="empty" style="padding:16px;">No fuel entries for this truck yet.</div>';
 
@@ -1421,7 +1456,7 @@ function openTruckDetail(truckNumber) {
         <div class="receipt-row-date">${escapeHtml(m.date || '')} · ${escapeHtml(m.service_type || '')}</div>
         <div class="receipt-row-detail">${escapeHtml(m.shop_vendor || 'No shop listed')} · $${(parseFloat(m.cost) || 0).toFixed(2)}${m.description ? ' · ' + escapeHtml(m.description) : ''}</div>
       </div>
-      ${photoCell(m.invoice_photo_url)}
+      ${truckDetailPhotoCell_(m.invoice_photo_url)}
     </div>
   `).join('') || '<div class="empty" style="padding:16px;">No maintenance entries for this truck yet.</div>';
 
@@ -1431,20 +1466,28 @@ function openTruckDetail(truckNumber) {
         <div class="receipt-row-date">${escapeHtml(c.date || '')}</div>
         <div class="receipt-row-detail">${escapeHtml(c.driver || 'No driver')} · ${escapeHtml(c.violation || '')}${c.fine_amount ? ' · $' + parseFloat(c.fine_amount).toFixed(2) : ''}</div>
       </div>
-      ${photoCell(c.citation_photo_url)}
+      ${truckDetailPhotoCell_(c.citation_photo_url)}
     </div>
-  `).join('');
+  `).join('') || '<div class="empty" style="padding:16px;">No citations for this truck.</div>';
 
-  document.getElementById('truck-detail-body').innerHTML = `
-    <div class="modal-section-title">Fuel Receipts (${fuel.length})</div>
-    ${fuelRows}
-    <div class="modal-section-title">Maintenance Invoices (${maint.length})</div>
-    ${maintRows}
-    ${cites.length ? `<div class="modal-section-title">Citations (${cites.length})</div>${citeRows}` : ''}
-  `;
+  let sectionsHtml = '';
+  if (filter === 'all' || filter === 'fuel') {
+    sectionsHtml += `<div class="modal-section-title">Fuel Receipts (${fuel.length})</div>${fuelRows}`;
+  }
+  if (filter === 'all' || filter === 'maint') {
+    sectionsHtml += `<div class="modal-section-title">Maintenance Invoices (${maint.length})</div>${maintRows}`;
+  }
+  if ((filter === 'all' && cites.length) || filter === 'cites') {
+    sectionsHtml += `<div class="modal-section-title">Citations (${cites.length})</div>${citeRows}`;
+  }
 
-  document.getElementById('truck-detail-modal').classList.add('open');
+  document.getElementById('truck-detail-body').innerHTML = chipsHtml + sectionsHtml;
 }
+
+document.getElementById('truck-detail-body').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-truck-filter]');
+  if (btn) setTruckDetailFilter_(btn.dataset.truckFilter);
+});
 
 // ---- Alert banner — pulsing bar across the top when anything is due soon or overdue ----
 function renderAlertBanner(dash) {
