@@ -1178,6 +1178,16 @@ function to24Hour_(timeStr) {
   return '';
 }
 
+// 24-hour "HH:MM" (how time is stored) -> friendly "h:mm AM/PM" for display.
+function to12Hour_(timeStr) {
+  const m = String(timeStr || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return timeStr || '';
+  let h = parseInt(m[1], 10);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return h + ':' + m[2] + ' ' + ampm;
+}
+
 // ---- Save handlers ----
 async function postAction(action, payload) {
   setSyncing(true);
@@ -1398,7 +1408,7 @@ function openTruckDetail(truckNumber) {
   const fuelRows = fuel.map(f => `
     <div class="receipt-row">
       <div class="receipt-row-main">
-        <div class="receipt-row-date">${escapeHtml(f.date || '')}${f.time ? ' · ' + escapeHtml(f.time) : ''}</div>
+        <div class="receipt-row-date">${escapeHtml(f.date || '')}${f.time ? ' · ' + escapeHtml(to12Hour_(f.time)) : ''}</div>
         <div class="receipt-row-detail">${escapeHtml(f.driver || 'No driver')} · ${f.gallons ? f.gallons + ' gal · ' : ''}$${(parseFloat(f.total_cost) || 0).toFixed(2)}${f.location ? ' · ' + escapeHtml(f.location) : ''}</div>
       </div>
       ${photoCell(f.receipt_photo_url)}
