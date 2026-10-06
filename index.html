@@ -1900,10 +1900,14 @@ function renderVendorContacts() {
 // no photo on file still show by name so nothing silently gets skipped.
 function renderBackfillResults_(candidates, moreRemaining) {
   const box = document.getElementById('contacts-backfill-results');
+  const status = document.getElementById('contacts-backfill-status');
   if (!candidates.length) {
     box.innerHTML = '<div style="font-size:13px;color:var(--text3);">No new shops found — everything in your maintenance records is already in Contacts.</div>';
     return;
   }
+  let remaining = candidates.length;
+  let addedCount = 0;
+
   box.innerHTML = candidates.map((c, i) => `
     <div class="receipt-row" data-backfill-idx="${i}">
       <div class="receipt-row-main">
@@ -1915,7 +1919,7 @@ function renderBackfillResults_(candidates, moreRemaining) {
       </div>
       <button class="btn btn-sm btn-green" data-backfill-add="${i}">Add</button>
     </div>
-  `).join('') + (moreRemaining ? '<div style="font-size:12px;color:var(--text3);margin-top:10px;">More shops may still be waiting — run the scan again after adding these to keep going.</div>' : '');
+  `).join('') + `<div id="backfill-more-note" style="font-size:12px;color:var(--text3);margin-top:10px;${moreRemaining ? '' : 'display:none;'}">More shops may still be waiting — run the scan again after adding these to keep going.</div>`;
 
   box.querySelectorAll('[data-backfill-add]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1925,12 +1929,34 @@ function renderBackfillResults_(candidates, moreRemaining) {
       btn.textContent = 'Adding…';
       const payload = { company_name: c.shop_vendor, address: c.shop_address || '', phone: c.shop_phone || '' };
       const result = await postAction('saveContact', payload);
+      const row = box.querySelector(`[data-backfill-idx="${idx}"]`);
       if (result.success) {
         if (!STATE.contacts) STATE.contacts = [];
         STATE.contacts.push({ id: result.id, company_name: c.shop_vendor, contact_name: '', phone: c.shop_phone || '', email: '', services_performed: '', notes: '', address: c.shop_address || '' });
         renderVendorContacts();
-        const row = box.querySelector(`[data-backfill-idx="${idx}"]`);
-        if (row) row.remove();
+        addedCount++;
+        remaining--;
+        // Visible confirmation before the row disappears, instead of it just
+        // vanishing with nothing to show it actually saved.
+        if (row) {
+          row.style.opacity = '0.6';
+          const mainDiv = row.querySelector('.receipt-row-main');
+          if (mainDiv) {
+            const confirmLine = document.createElement('div');
+            confirmLine.style.cssText = 'font-size:12px;color:#2ecc71;margin-top:4px;';
+            confirmLine.textContent = '✅ Added to Contacts';
+            mainDiv.appendChild(confirmLine);
+          }
+          btn.remove();
+          setTimeout(() => { if (row.parentNode) row.remove(); }, 1000);
+        }
+        status.textContent = remaining > 0
+          ? `Added ${addedCount} of ${candidates.length} — ${remaining} left to review.`
+          : `✅ All ${candidates.length} shop${candidates.length === 1 ? '' : 's'} added to Contacts — see the list above.`;
+        if (remaining === 0) {
+          const note = document.getElementById('backfill-more-note');
+          if (note && !moreRemaining) note.style.display = 'none';
+        }
       } else {
         btn.disabled = false;
         btn.textContent = 'Add';
