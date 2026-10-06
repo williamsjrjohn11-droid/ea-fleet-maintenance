@@ -330,6 +330,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
         <div class="field-group">
           <label class="field-label">Shop / Vendor</label>
           <input type="text" id="maint-vendor" class="field-input">
+          <div id="maint-add-contact-hint" style="display:none;font-size:11px;color:var(--text3);margin-top:4px;"></div>
         </div>
         <div class="field-group">
           <label class="field-label">Receipt #</label>
@@ -535,6 +536,10 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
         </div>
       </div>
       <div class="field-group">
+        <label class="field-label">Address</label>
+        <input type="text" id="vendor-address" class="field-input" placeholder="1750 Wilmeth Rd, McKinney, TX">
+      </div>
+      <div class="field-group">
         <label class="field-label">Services Performed</label>
         <input type="text" id="vendor-services" class="field-input" placeholder="Brakes, diesel repair, parts">
       </div>
@@ -544,6 +549,13 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
       </div>
       <button class="btn btn-green btn-full" id="vendor-save-btn">Save Contact</button>
       <div id="vendor-contacts-list" style="margin-top:16px;"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Find Shops From Existing Maintenance Records</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Looks through maintenance entries already logged for shops not yet in Contacts, and pulls the address/phone off any invoice photo already on file.</div>
+      <button class="btn btn-full" id="contacts-backfill-btn">🔍 Scan Existing Maintenance Records</button>
+      <div id="contacts-backfill-status" style="display:none;font-size:13px;color:var(--text2);margin-top:10px;"></div>
+      <div id="contacts-backfill-results" style="margin-top:10px;"></div>
     </div>
   </div>
 
@@ -1146,6 +1158,7 @@ async function scanReceipt(dataUrl, kind, filename) {
     if (statusEl) statusEl.textContent = Array.isArray(f.parts) && f.parts.length
       ? `✅ Read the invoice — captured ${f.parts.length} line item${f.parts.length === 1 ? '' : 's'} below. Double-check before saving.`
       : '✅ Read the invoice — double-check before saving.';
+    showAddContactHintIfNew_(f.shop_vendor, f.shop_address, f.shop_phone);
   } else if (kind === 'citation') {
     if (f.date) document.getElementById('citation-date').value = f.date;
     if (f.driver) setDriverSelectValue('citation-driver-select', 'citation-driver-other', f.driver);
@@ -1159,6 +1172,38 @@ async function scanReceipt(dataUrl, kind, filename) {
     }
     if (statusEl) statusEl.textContent = '✅ Read the citation — double-check before saving.';
   }
+}
+
+// After scanning a maintenance invoice: if the shop printed an address or
+// phone and isn't already in the vendor directory (Contacts tab), offer a
+// one-tap way to add it — rather than making the person retype the same
+// shop info by hand later in the Contacts panel.
+let _pendingContactFromScan = null;
+function showAddContactHintIfNew_(shopVendor, shopAddress, shopPhone) {
+  const hint = document.getElementById('maint-add-contact-hint');
+  if (!shopVendor || (!shopAddress && !shopPhone)) { hint.style.display = 'none'; _pendingContactFromScan = null; return; }
+
+  const existing = (STATE.contacts || []).some(c => (c.company_name || '').trim().toLowerCase() === shopVendor.trim().toLowerCase());
+  if (existing) { hint.style.display = 'none'; _pendingContactFromScan = null; return; }
+
+  _pendingContactFromScan = { company_name: shopVendor, address: shopAddress || '', phone: shopPhone || '' };
+  hint.style.display = 'block';
+  hint.innerHTML = `💡 "${escapeHtml(shopVendor)}" isn't in your Contacts yet — <a href="#" id="maint-add-contact-link" style="color:var(--accent);">add it</a>`;
+  document.getElementById('maint-add-contact-link').addEventListener('click', async (e) => {
+    e.preventDefault();
+    if (!_pendingContactFromScan) return;
+    hint.textContent = 'Saving…';
+    const result = await postAction('saveContact', _pendingContactFromScan);
+    if (result.success) {
+      hint.textContent = '✅ Added to Contacts.';
+      if (!STATE.contacts) STATE.contacts = [];
+      STATE.contacts.push({ id: result.id, ..._pendingContactFromScan, contact_name: '', email: '', services_performed: '', notes: '' });
+      renderVendorContacts();
+      _pendingContactFromScan = null;
+    } else {
+      hint.textContent = 'Could not save: ' + (result.error || 'unknown error');
+    }
+  });
 }
 
 // "2:51 PM" / "14:51" -> "14:51" for an <input type="time">. Returns '' if unparseable.
@@ -1396,10 +1441,27 @@ function closeTruckDetail() {
 let truckDetailData_ = null;
 let truckDetailFilter_ = 'all';
 
+// Pulls the Drive file id out of whichever URL shape got stored
+// ("uc?id=XYZ" from older entries, "file/d/XYZ/view" from newer ones) so we
+// can always build a reliable image URL for the <img> tag. Drive's plain
+// "uc?id=" link often serves an HTML interstitial instead of raw image bytes
+// when loaded cross-origin like this, which is why thumbnails were showing
+// as a broken-image / bare "Receipt photo" link instead of an actual photo
+// — the file itself was fine, only the embed URL wasn't reliable. The
+// /thumbnail endpoint is Google's documented way to hotlink a Drive file as
+// an image and also renders a preview image for PDFs, not just photos.
+function driveFileId_(url) {
+  let m = String(url || '').match(/[?&]id=([^&]+)/);
+  if (m) return m[1];
+  m = String(url || '').match(/\/d\/([^/]+)/);
+  return m ? m[1] : null;
+}
+
 function truckDetailPhotoCell_(url) {
-  return url
-    ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" loading="lazy" class="receipt-thumb" alt="Receipt photo"></a>`
-    : `<div class="receipt-thumb-empty">No photo</div>`;
+  if (!url) return `<div class="receipt-thumb-empty">No photo</div>`;
+  const id = driveFileId_(url);
+  const thumbSrc = id ? `https://drive.google.com/thumbnail?id=${id}&sz=w200` : url;
+  return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(thumbSrc)}" loading="lazy" class="receipt-thumb" alt="Receipt photo"></a>`;
 }
 
 function openTruckDetail(truckNumber) {
@@ -1816,6 +1878,7 @@ function renderVendorContacts() {
       <div>
         <div style="font-size:14px;font-weight:600;">${escapeHtml(c.company_name)}</div>
         <div style="font-size:12px;color:var(--text2);">${escapeHtml(c.contact_name || '')}${c.contact_name ? ' · ' : ''}${escapeHtml(c.phone || '')}${c.email ? ' · ' + escapeHtml(c.email) : ''}</div>
+        ${c.address ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(c.address)}</div>` : ''}
         ${c.services_performed ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(c.services_performed)}</div>` : ''}
         ${c.notes ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(c.notes)}</div>` : ''}
       </div>
@@ -1830,6 +1893,79 @@ function renderVendorContacts() {
   });
 }
 
+// "Find Shops From Existing Maintenance Records" — a one-time catch-up scan
+// for shops that were logged before the scan-to-Contacts feature existed.
+// Renders each candidate shop with whatever the backend could pull (address/
+// phone, when a photo was on file to re-read) plus an Add button; shops with
+// no photo on file still show by name so nothing silently gets skipped.
+function renderBackfillResults_(candidates, moreRemaining) {
+  const box = document.getElementById('contacts-backfill-results');
+  if (!candidates.length) {
+    box.innerHTML = '<div style="font-size:13px;color:var(--text3);">No new shops found — everything in your maintenance records is already in Contacts.</div>';
+    return;
+  }
+  box.innerHTML = candidates.map((c, i) => `
+    <div class="receipt-row" data-backfill-idx="${i}">
+      <div class="receipt-row-main">
+        <div style="font-size:14px;font-weight:600;">${escapeHtml(c.shop_vendor)}</div>
+        <div style="font-size:12px;color:var(--text2);">${c.maintenance_count} maintenance record${c.maintenance_count === 1 ? '' : 's'}</div>
+        ${c.shop_address ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(c.shop_address)}</div>` : ''}
+        ${c.shop_phone ? `<div style="font-size:12px;color:var(--text3);">${escapeHtml(c.shop_phone)}</div>` : ''}
+        ${(!c.shop_address && !c.shop_phone) ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${c.had_photo ? 'Could not read an address/phone off the invoice photo.' : 'No invoice photo on file — add details by hand after.'}</div>` : ''}
+      </div>
+      <button class="btn btn-sm btn-green" data-backfill-add="${i}">Add</button>
+    </div>
+  `).join('') + (moreRemaining ? '<div style="font-size:12px;color:var(--text3);margin-top:10px;">More shops may still be waiting — run the scan again after adding these to keep going.</div>' : '');
+
+  box.querySelectorAll('[data-backfill-add]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.dataset.backfillAdd, 10);
+      const c = candidates[idx];
+      btn.disabled = true;
+      btn.textContent = 'Adding…';
+      const payload = { company_name: c.shop_vendor, address: c.shop_address || '', phone: c.shop_phone || '' };
+      const result = await postAction('saveContact', payload);
+      if (result.success) {
+        if (!STATE.contacts) STATE.contacts = [];
+        STATE.contacts.push({ id: result.id, company_name: c.shop_vendor, contact_name: '', phone: c.shop_phone || '', email: '', services_performed: '', notes: '', address: c.shop_address || '' });
+        renderVendorContacts();
+        const row = box.querySelector(`[data-backfill-idx="${idx}"]`);
+        if (row) row.remove();
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Add';
+        alert('Could not add: ' + (result.error || 'unknown error'));
+      }
+    });
+  });
+}
+
+document.getElementById('contacts-backfill-btn').addEventListener('click', async () => {
+  const status = document.getElementById('contacts-backfill-status');
+  const results = document.getElementById('contacts-backfill-results');
+  const btn = document.getElementById('contacts-backfill-btn');
+  btn.disabled = true;
+  status.style.display = 'block';
+  status.textContent = '🔎 Scanning existing maintenance records — this can take a little while if there are photos to re-read…';
+  results.innerHTML = '';
+  try {
+    const result = await withTimeout(
+      postAction('backfillShopContacts', {}),
+      60000,
+      'Taking too long — try again in a bit.'
+    );
+    if (!result || result.error) {
+      status.textContent = (result && result.error) || 'Could not scan maintenance records.';
+    } else {
+      status.textContent = `Found ${result.candidates.length} shop${result.candidates.length === 1 ? '' : 's'} not yet in Contacts.`;
+      renderBackfillResults_(result.candidates, result.more_remaining);
+    }
+  } catch (err) {
+    status.textContent = err && err.message ? err.message : 'Could not scan maintenance records.';
+  }
+  btn.disabled = false;
+});
+
 document.getElementById('vendor-save-btn').addEventListener('click', async () => {
   const company_name = document.getElementById('vendor-company').value.trim();
   if (!company_name) { alert('Company name is required.'); return; }
@@ -1839,11 +1975,12 @@ document.getElementById('vendor-save-btn').addEventListener('click', async () =>
     phone: document.getElementById('vendor-phone').value.trim(),
     email: document.getElementById('vendor-email').value.trim(),
     services_performed: document.getElementById('vendor-services').value.trim(),
-    notes: document.getElementById('vendor-notes').value.trim()
+    notes: document.getElementById('vendor-notes').value.trim(),
+    address: document.getElementById('vendor-address').value.trim()
   };
   const result = await postAction('saveContact', payload);
   if (result.success) {
-    ['vendor-company','vendor-contact-name','vendor-phone','vendor-email','vendor-services','vendor-notes'].forEach(id => document.getElementById(id).value = '');
+    ['vendor-company','vendor-contact-name','vendor-phone','vendor-email','vendor-services','vendor-notes','vendor-address'].forEach(id => document.getElementById(id).value = '');
     loadData();
   } else {
     alert('Save failed: ' + (result.error || 'unknown error'));
