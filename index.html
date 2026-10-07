@@ -1447,7 +1447,7 @@ function renderDashboard() {
   } else {
     payCard.style.display = '';
     document.getElementById('dash-payment-breakdown').innerHTML = paymentFleet.map(p => `
-      <div class="metric"><div class="metric-label">${escapeHtml(p.payment_type)}</div><div class="metric-value">$${p.total.toFixed(2)}</div></div>
+      <div class="metric"><div class="metric-label">${escapeHtml(p.payment_type)}</div><div class="metric-value">$${fmtMoney_(p.total)}</div></div>
     `).join('');
   }
 
@@ -1608,7 +1608,7 @@ function renderTruckDetailBody_() {
     <div class="receipt-row">
       <div class="receipt-row-main">
         <div class="receipt-row-date">${escapeHtml(f.date || '')}${f.time ? ' · ' + escapeHtml(to12Hour_(f.time)) : ''}</div>
-        <div class="receipt-row-detail">${escapeHtml(f.driver || 'No driver')} · ${f.gallons ? f.gallons + ' gal · ' : ''}$${(parseFloat(f.total_cost) || 0).toFixed(2)}${f.location ? ' · ' + escapeHtml(f.location) : ''}</div>
+        <div class="receipt-row-detail">${escapeHtml(f.driver || 'No driver')} · ${f.gallons ? f.gallons + ' gal · ' : ''}$${fmtMoney_(f.total_cost)}${f.location ? ' · ' + escapeHtml(f.location) : ''}</div>
       </div>
       ${truckDetailPhotoCell_(f.receipt_photo_url)}
     </div>
@@ -1618,7 +1618,7 @@ function renderTruckDetailBody_() {
     <div class="receipt-row">
       <div class="receipt-row-main">
         <div class="receipt-row-date">${escapeHtml(m.date || '')} · ${escapeHtml(m.service_type || '')}</div>
-        <div class="receipt-row-detail">${escapeHtml(m.shop_vendor || 'No shop listed')} · $${(parseFloat(m.cost) || 0).toFixed(2)}${m.description ? ' · ' + escapeHtml(m.description) : ''}</div>
+        <div class="receipt-row-detail">${escapeHtml(m.shop_vendor || 'No shop listed')} · $${fmtMoney_(m.cost)}${m.description ? ' · ' + escapeHtml(m.description) : ''}</div>
       </div>
       ${truckDetailPhotoCell_(m.invoice_photo_url, 'maintenance', m.id)}
     </div>
@@ -1628,7 +1628,7 @@ function renderTruckDetailBody_() {
     <div class="receipt-row">
       <div class="receipt-row-main">
         <div class="receipt-row-date">${escapeHtml(c.date || '')}</div>
-        <div class="receipt-row-detail">${escapeHtml(c.driver || 'No driver')} · ${escapeHtml(c.violation || '')}${c.fine_amount ? ' · $' + parseFloat(c.fine_amount).toFixed(2) : ''}</div>
+        <div class="receipt-row-detail">${escapeHtml(c.driver || 'No driver')} · ${escapeHtml(c.violation || '')}${c.fine_amount ? ' · $' + fmtMoney_(c.fine_amount) : ''}</div>
       </div>
       ${truckDetailPhotoCell_(c.citation_photo_url)}
     </div>
@@ -1755,6 +1755,15 @@ function escapeHtml(s) {
   return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Dollar amounts displayed in the UI get thousands separators (e.g.
+// "60,357.06") so a 5-6 digit total doesn't run together into one hard-to-
+// read string of digits. Only for on-screen display — the Excel export
+// keeps plain numeric cells (Number(...)) since Excel does its own
+// formatting and a comma-formatted string would import as text, not a number.
+function fmtMoney_(n) {
+  return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 // ---- Reports ----
 function reportsDateRange_() {
   const from = document.getElementById('reports-from').value || null;
@@ -1816,24 +1825,24 @@ function renderReports() {
   tbody.innerHTML = Object.entries(byTruck).map(([truck, c]) => `
     <tr>
       <td>${truck}</td>
-      <td>$${c.fuel.toFixed(2)}</td>
-      <td>$${c.maint.toFixed(2)}</td>
-      <td><strong>$${(c.fuel + c.maint).toFixed(2)}</strong></td>
+      <td>$${fmtMoney_(c.fuel)}</td>
+      <td>$${fmtMoney_(c.maint)}</td>
+      <td><strong>$${fmtMoney_(c.fuel + c.maint)}</strong></td>
     </tr>
   `).join('') || '<tr><td colspan="4" style="color:var(--text3);">No entries in this range.</td></tr>';
 
   const paymentRows = reportsPaymentBreakdown_(fuelLog, maintenanceLog);
   document.querySelector('#reports-payment-table tbody').innerHTML = paymentRows.map(p => `
-    <tr><td>${escapeHtml(p.payment_type)}</td><td>$${p.total.toFixed(2)}</td></tr>
+    <tr><td>${escapeHtml(p.payment_type)}</td><td>$${fmtMoney_(p.total)}</td></tr>
   `).join('') || '<tr><td colspan="2" style="color:var(--text3);">No entries in this range.</td></tr>';
 
   const cardRows = reportsCardBreakdown_(fuelLog, maintenanceLog);
   document.querySelector('#reports-card-table tbody').innerHTML = cardRows.map(c => `
     <tr>
       <td>${escapeHtml(c.card)}</td>
-      <td>$${c.fuel.toFixed(2)}</td>
-      <td>$${c.maint.toFixed(2)}</td>
-      <td><strong>$${c.total.toFixed(2)}</strong></td>
+      <td>$${fmtMoney_(c.fuel)}</td>
+      <td>$${fmtMoney_(c.maint)}</td>
+      <td><strong>$${fmtMoney_(c.total)}</strong></td>
     </tr>
   `).join('') || '<tr><td colspan="4" style="color:var(--text3);">No entries in this range.</td></tr>';
 }
@@ -2286,7 +2295,7 @@ function renderCitations() {
   list.innerHTML = `<div class="swipe-hint">← swipe to see more →</div><div class="table-wrap"><table><thead><tr><th>Truck</th><th>Driver</th><th>Date</th><th>County</th><th>Violation</th><th>Fine</th><th>Status</th><th></th></tr></thead><tbody>${
     sorted.map(c => `<tr>
       <td>${escapeHtml(c.truck_number)}</td><td>${escapeHtml(c.driver || '')}</td><td>${escapeHtml(c.date || '')}</td>
-      <td>${escapeHtml(c.county || '')}</td><td>${escapeHtml(c.violation || '')}</td><td>$${c.fine_amount.toFixed(2)}</td>
+      <td>${escapeHtml(c.county || '')}</td><td>${escapeHtml(c.violation || '')}</td><td>$${fmtMoney_(c.fine_amount)}</td>
       <td>${c.action_complete ? '<span class="dot green"></span> Complete' : '<span class="dot amber"></span> Open'}</td>
       <td><button class="btn btn-sm btn-red" data-citation-id="${c.id}">✕</button></td>
     </tr>`).join('')
@@ -2440,15 +2449,15 @@ document.getElementById('ifta-run-btn').addEventListener('click', async () => {
             <td>${r.gallons_purchased.toFixed(1)}</td>
             <td>$${r.rate_per_gallon.toFixed(4)}</td>
             <td>${r.taxable_gallons.toFixed(1)}</td>
-            <td>$${r.tax_due.toFixed(2)}</td>
-            <td>$${r.tax_paid.toFixed(2)}</td>
-            <td class="${netClass(r.net)}" style="font-weight:600;">${r.net > 0 ? '+' : ''}$${r.net.toFixed(2)}</td>
+            <td>$${fmtMoney_(r.tax_due)}</td>
+            <td>$${fmtMoney_(r.tax_paid)}</td>
+            <td class="${netClass(r.net)}" style="font-weight:600;">${r.net > 0 ? '+' : ''}$${fmtMoney_(r.net)}</td>
           </tr>`).join('')}
         </tbody>
       </table>
     </div>
     <div style="margin-top:14px;font-size:14px;">
-      <strong>Grand total: <span class="${netClass(report.grand_total_net)}">${report.grand_total_net > 0 ? 'You owe ' : 'Credit of '}$${Math.abs(report.grand_total_net).toFixed(2)}</span></strong>
+      <strong>Grand total: <span class="${netClass(report.grand_total_net)}">${report.grand_total_net > 0 ? 'You owe ' : 'Credit of '}$${fmtMoney_(Math.abs(report.grand_total_net))}</span></strong>
       <div style="font-size:12px;color:var(--text2);margin-top:2px;">Positive = owed across all states combined. Negative = net credit. Check each state individually — some may owe while others credit.</div>
     </div>
   `;
