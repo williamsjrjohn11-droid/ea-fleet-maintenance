@@ -182,6 +182,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     <button class="tab" data-panel="panel-contacts">Contacts</button>
     <button class="tab" data-panel="panel-citations">Citations</button>
     <button class="tab" data-panel="panel-trucks">Trucks</button>
+    <button class="tab" data-panel="panel-compliance">Compliance</button>
     <button class="tab" data-panel="panel-help">Help</button>
   </div>
 
@@ -630,6 +631,50 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
     </div>
   </div>
 
+  <!-- ==================== COMPLIANCE ==================== -->
+  <div id="panel-compliance" class="panel">
+    <div class="card">
+      <div class="card-title">Compliance — Licenses, Registration &amp; Insurance</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Anything with a hard due date that isn't a mechanical service — a driver's CDL or medical card, a truck's registration or insurance renewal, an annual DOT inspection sticker. Shows up on the Dashboard and the alert banner the same way an overdue oil change does.</p>
+
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">For</label>
+          <select id="compliance-subject-type" class="field-input">
+            <option value="truck">Truck</option>
+            <option value="driver">Driver</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label class="field-label" id="compliance-subject-name-label">Truck</label>
+          <select id="compliance-subject-name" class="field-input"></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Item</label>
+          <select id="compliance-item-type" class="field-input"></select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Due Date</label>
+          <input type="date" id="compliance-due-date" class="field-input">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Notes</label>
+        <input type="text" id="compliance-notes" class="field-input" placeholder="Policy #, carrier name, etc. (optional)">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Attach Document (optional)</label>
+        <input type="file" id="compliance-doc-input" accept="image/*,application/pdf" class="field-input">
+      </div>
+      <button class="btn btn-green btn-full" id="compliance-save-btn">Save Compliance Item</button>
+      <div id="compliance-save-status" style="display:none;font-size:13px;color:var(--text2);margin-top:8px;"></div>
+
+      <div id="compliance-list" style="margin-top:20px;"></div>
+    </div>
+  </div>
+
   <!-- ==================== HELP ==================== -->
   <div id="panel-help" class="panel">
     <div class="card">
@@ -704,6 +749,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
         <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="MaintenanceRules" class="danger-zone-cb"> Maintenance Rules (service intervals)</label>
         <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="IFTAMileage" class="danger-zone-cb"> IFTA Mileage entries</label>
         <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="IFTARates" class="danger-zone-cb"> IFTA Rate entries</label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;"><input type="checkbox" value="ComplianceItems" class="danger-zone-cb"> Compliance items (licenses, registration, insurance)</label>
       </div>
       <div class="field-group">
         <label class="field-label">Type DELETE to confirm</label>
@@ -721,7 +767,7 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);}
 // TODO on deploy: replace with the deployed Apps Script /exec URL (Deployment step 6 in DEPLOYMENT.md)
 const API_URL = 'https://script.google.com/macros/s/AKfycbxIgip3DXn4GLJSPVDGkDPdr1yUHA_Kq0JdLQ1Ku0PfQXkf2NUAYFcBl8RWECvSWtv-/exec';
 
-let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceParts: [], maintenanceRules: [], alertContacts: [], iftaMileage: [], iftaRates: [], contacts: [], citations: [], dashboard: [], paymentBreakdown: { fleet: [], by_truck: {} } };
+let STATE = { trucks: [], fuelLog: [], maintenanceLog: [], maintenanceParts: [], maintenanceRules: [], alertContacts: [], iftaMileage: [], iftaRates: [], contacts: [], citations: [], complianceItems: [], dashboard: [], paymentBreakdown: { fleet: [], by_truck: {} } };
 
 const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
 
@@ -790,6 +836,8 @@ async function loadData() {
     renderIftaMileageList();
     renderIftaRatesList();
     renderTrucksVinList();
+    populateComplianceSubjectNames_();
+    renderComplianceList();
   } catch (err) {
     console.error('Load failed', err);
   } finally {
@@ -814,6 +862,7 @@ function populateTruckSelects() {
 // Truck stays overridable (a sub driving someone else's truck that day), and
 // an "Other" option covers anyone not yet assigned a truck in LoadTracker. ----
 let driverToTruck = {};
+let allDriverNames_ = []; // kept in sync here so other panels (Compliance) don't need to re-derive it
 function populateDriverSelects() {
   driverToTruck = {};
   const seen = new Set();
@@ -822,6 +871,7 @@ function populateDriverSelects() {
     if (name && !seen.has(name)) { seen.add(name); driverToTruck[name] = t.truck_number; }
   });
   const driverNames = Array.from(seen).sort();
+  allDriverNames_ = driverNames;
   const optsHtml = '<option value="">— Select Driver —</option>'
     + driverNames.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')
     + '<option value="__other__">Other (type name)</option>';
@@ -1378,8 +1428,11 @@ document.getElementById('maint-add-part-btn').addEventListener('click', () => ad
 // ---- Dashboard ----
 function renderDashboard() {
   const dash = STATE.dashboard || [];
-  const redCount = dash.reduce((n, t) => n + t.upcoming_maintenance.filter(m => m.status === 'red').length, 0);
-  const amberCount = dash.reduce((n, t) => n + t.upcoming_maintenance.filter(m => m.status === 'amber').length, 0);
+  const compliance = STATE.complianceItems || [];
+  const redCount = dash.reduce((n, t) => n + t.upcoming_maintenance.filter(m => m.status === 'red').length, 0)
+    + compliance.filter(c => c.status === 'red').length;
+  const amberCount = dash.reduce((n, t) => n + t.upcoming_maintenance.filter(m => m.status === 'amber').length, 0)
+    + compliance.filter(c => c.status === 'amber').length;
 
   document.getElementById('dash-metrics').innerHTML = `
     <div class="metric"><div class="metric-label">Active Trucks</div><div class="metric-value">${dash.length}</div></div>
@@ -1620,6 +1673,11 @@ function renderAlertBanner(dash) {
       }
       items.push({ urgent: m.status === 'red', text: `${t.truck_number}: ${m.service_type} — ${when}` });
     });
+  });
+  (STATE.complianceItems || []).forEach(c => {
+    if (c.status !== 'red' && c.status !== 'amber') return;
+    const when = c.days_remaining <= 0 ? `${Math.abs(c.days_remaining)}d overdue` : `due in ${c.days_remaining}d`;
+    items.push({ urgent: c.status === 'red', text: `${c.subject_name}: ${c.item_type} — ${when}` });
   });
   items.sort((a, b) => (a.urgent === b.urgent) ? 0 : (a.urgent ? -1 : 1));
 
@@ -2100,6 +2158,125 @@ function renderTrucksVinList() {
     });
   });
 }
+
+// ---- Compliance — licenses/registration/insurance with a hard due date ----
+const COMPLIANCE_ITEM_TYPES = {
+  truck: ['Registration', 'Insurance', 'Annual DOT Inspection', 'Other'],
+  driver: ['CDL', 'Medical Card (DOT Physical)', 'Drug Test', 'Other']
+};
+
+function populateComplianceSubjectNames_() {
+  const typeSel = document.getElementById('compliance-subject-type');
+  const nameSel = document.getElementById('compliance-subject-name');
+  const nameLabel = document.getElementById('compliance-subject-name-label');
+  const itemTypeSel = document.getElementById('compliance-item-type');
+  const subjectType = typeSel.value || 'truck';
+
+  nameLabel.textContent = subjectType === 'driver' ? 'Driver' : 'Truck';
+  if (subjectType === 'driver') {
+    nameSel.innerHTML = '<option value="">— Select Driver —</option>'
+      + allDriverNames_.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+  } else {
+    nameSel.innerHTML = '<option value="">— Select Truck —</option>'
+      + (STATE.trucks || []).filter(t => t.status === 'Active')
+        .map(t => `<option value="${escapeHtml(t.truck_number)}">${escapeHtml(t.truck_number)}</option>`).join('');
+  }
+  itemTypeSel.innerHTML = COMPLIANCE_ITEM_TYPES[subjectType].map(it => `<option value="${escapeHtml(it)}">${escapeHtml(it)}</option>`).join('');
+}
+document.getElementById('compliance-subject-type').addEventListener('change', populateComplianceSubjectNames_);
+
+function complianceStatusBadge_(status) {
+  if (status === 'red') return '<span class="badge badge-red">Overdue</span>';
+  if (status === 'amber') return '<span class="badge badge-amber">Due Soon</span>';
+  return '<span class="badge badge-green">OK</span>';
+}
+
+function renderComplianceList() {
+  const list = document.getElementById('compliance-list');
+  const items = STATE.complianceItems || [];
+  if (!items.length) {
+    list.innerHTML = '<div style="font-size:13px;color:var(--text3);">No compliance items tracked yet — add a driver\'s CDL/medical card or a truck\'s registration/insurance above.</div>';
+    return;
+  }
+  const statusRank = { red: 0, amber: 1, green: 2 };
+  const sorted = [...items].sort((a, b) => (statusRank[a.status] - statusRank[b.status]) || (new Date(a.due_date) - new Date(b.due_date)));
+
+  list.innerHTML = sorted.map(c => `
+    <div class="receipt-row" data-compliance-id="${escapeHtml(c.id)}">
+      <div class="receipt-row-main">
+        <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          ${escapeHtml(c.subject_name)} · ${escapeHtml(c.item_type)} ${complianceStatusBadge_(c.status)}
+        </div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px;">
+          Due ${escapeHtml(c.due_date || '')}${c.days_remaining != null ? ' · ' + (c.days_remaining <= 0 ? Math.abs(c.days_remaining) + 'd overdue' : c.days_remaining + 'd left') : ''}
+        </div>
+        ${c.notes ? `<div style="font-size:12px;color:var(--text3);margin-top:2px;">${escapeHtml(c.notes)}</div>` : ''}
+      </div>
+      ${c.document_url
+        ? `<a href="${escapeHtml(c.document_url)}" target="_blank" rel="noopener"><img src="${escapeHtml((() => { const id = driveFileId_(c.document_url); return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w200` : c.document_url; })())}" loading="lazy" class="receipt-thumb" alt="Document"></a>`
+        : '<div class="receipt-thumb-empty">No doc</div>'
+      }
+      <button class="btn btn-sm btn-red" data-compliance-remove="${escapeHtml(c.id)}" style="margin-left:8px;">Remove</button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('[data-compliance-remove]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Remove this compliance item?')) return;
+      await postAction('deleteComplianceItem', { id: btn.dataset.complianceRemove });
+      loadData();
+    });
+  });
+}
+
+document.getElementById('compliance-save-btn').addEventListener('click', async () => {
+  const status = document.getElementById('compliance-save-status');
+  const subject_type = document.getElementById('compliance-subject-type').value;
+  const subject_name = document.getElementById('compliance-subject-name').value;
+  const item_type = document.getElementById('compliance-item-type').value;
+  const due_date = document.getElementById('compliance-due-date').value;
+  const notes = document.getElementById('compliance-notes').value.trim();
+  const fileInput = document.getElementById('compliance-doc-input');
+
+  if (!subject_name) { alert(`Please select a ${subject_type === 'driver' ? 'driver' : 'truck'}.`); return; }
+  if (!due_date) { alert('Please set a due date.'); return; }
+
+  const btn = document.getElementById('compliance-save-btn');
+  btn.disabled = true;
+  status.style.display = 'block';
+  status.textContent = 'Saving…';
+
+  let document_url = '';
+  const file = fileInput.files && fileInput.files[0];
+  if (file) {
+    status.textContent = 'Uploading document…';
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const finalDataUrl = file.type !== 'application/pdf' ? await compressImageDataUrl(dataUrl, 1600, 0.85) : dataUrl;
+    const upload = await postAction('uploadPhoto', { base64: finalDataUrl, filename: file.name || `compliance-${subject_name}.jpg` });
+    if (upload.success) {
+      document_url = upload.url;
+    } else {
+      status.textContent = 'Could not upload the document, saving without it: ' + (upload.error || 'unknown error');
+    }
+  }
+
+  const result = await postAction('saveComplianceItem', { subject_type, subject_name, item_type, due_date, notes, document_url });
+  btn.disabled = false;
+  if (result.success) {
+    status.textContent = '✅ Saved.';
+    document.getElementById('compliance-due-date').value = '';
+    document.getElementById('compliance-notes').value = '';
+    fileInput.value = '';
+    loadData();
+  } else {
+    status.textContent = 'Save failed: ' + (result.error || 'unknown error');
+  }
+});
 
 function renderCitations() {
   const list = document.getElementById('citations-list');
